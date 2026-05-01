@@ -1,0 +1,148 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account and role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "manager", "seller"] },
+        "managerId": { "type": "string" },
+        "active": { "type": "boolean" },
+        "mustChangePassword": { "type": "boolean" },
+        "commissionRateDefault": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Company": {
+      "title": "Company",
+      "description": "Customer or prospect account",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "fantasyName": { "type": "string" },
+        "cnpj": { "type": "string" },
+        "segment": { "type": "string" },
+        "status": { "type": "string" },
+        "temperature": { "type": "string" },
+        "priority": { "type": "string" },
+        "potential": { "type": "number" },
+        "responsibleUserId": { "type": "string" },
+        "address": { "type": "object" },
+        "lastContactAt": { "type": "string", "format": "date-time" },
+        "nextFollowupAt": { "type": "string", "format": "date-time" },
+        "managerNotes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Branch": {
+      "title": "Company Branch",
+      "description": "Subsidiary unit of a company",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "cnpj": { "type": "string" },
+        "address": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Contact": {
+      "title": "Contact",
+      "description": "Person associated with a company",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "position": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" }
+      }
+    },
+    "Interaction": {
+      "title": "Interaction",
+      "description": "A communication or activity with a company",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "nextStep": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Proposal": {
+      "title": "Proposal",
+      "description": "Sales proposal",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "userId": { "type": "string" },
+        "status": { "type": "string" },
+        "totalValue": { "type": "number" },
+        "items": { "type": "array" },
+        "validUntil": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Ticket": {
+      "title": "Manager Ticket",
+      "description": "Internal orientation from manager to seller",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "managerId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "priority": { "type": "string" },
+        "status": { "type": "string" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System or user notice",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "read": { "type": "boolean" },
+        "relatedId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Commission": {
+      "title": "Commission",
+      "description": "Automatic commission record",
+      "type": "object",
+      "properties": {
+        "proposalId": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/companies/{companyId}": { "schema": "Company", "description": "Company database" },
+    "/companies/{companyId}/branches/{branchId}": { "schema": "Branch", "description": "Company branches" },
+    "/companies/{companyId}/contacts/{contactId}": { "schema": "Contact", "description": "Company contacts" },
+    "/companies/{companyId}/interactions/{interactionId}": { "schema": "Interaction", "description": "Communication history" },
+    "/proposals/{proposalId}": { "schema": "Proposal", "description": "Sales proposals" },
+    "/tickets/{ticketId}": { "schema": "Ticket", "description": "Internal tickets" },
+    "/notifications/{notificationId}": { "schema": "Notification", "description": "User notifications" },
+    "/commissions/{commissionId}": { "schema": "Commission", "description": "Sales commissions" }
+  }
+}

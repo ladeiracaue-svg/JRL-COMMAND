@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-primary-900: #0E2A47;
+  --color-primary-800: #1E4F8A;
+  --color-gold: #C8A45C;
+  --color-technical: #6C7A89;
+}
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-slate-900;
+  }
+}
+
+.jrl-card {
+  @apply bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden;
+}
+
+.jrl-btn-primary {
+  @apply bg-primary-900 text-white px-4 py-2 rounded-lg hover:bg-primary-800 transition-colors font-medium flex items-center justify-center gap-2;
+}
+
+.jrl-btn-secondary {
+  @apply bg-white border border-gray-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center justify-center gap-2;
+}

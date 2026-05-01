@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isRole(role) {
+      return isSignedIn() && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return isRole('admin');
+    }
+
+    function isManager() {
+      return isRole('manager');
+    }
+
+    function isSeller() {
+      return isRole('seller');
+    }
+
+    function canAccessData(ownerId) {
+      return isAdmin() || isManager() || (isSeller() && ownerId == request.auth.uid);
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Users ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if isAdmin();
+    }
+
+    // --- Companies ---
+    match /companies/{companyId} {
+      allow read: if canAccessData(resource.data.responsibleUserId);
+      allow create: if isSignedIn();
+      allow update: if canAccessData(resource.data.responsibleUserId);
+      allow delete: if isAdmin();
+
+      // Interactions
+      match /interactions/{interactionId} {
+        allow read: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
+        allow write: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
+      }
+
+      // Branches
+      match /branches/{branchId} {
+        allow read: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
+        allow write: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
+      }
+
+      // Contacts
+      match /contacts/{contactId} {
+        allow read: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
+        allow write: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
+      }
+    }
+
+    // --- Proposals ---
+    match /proposals/{proposalId} {
+      allow read: if canAccessData(resource.data.userId);
+      allow create: if isSignedIn();
+      allow update: if canAccessData(resource.data.userId);
+      allow delete: if isAdmin();
+    }
+
+    // --- Tickets ---
+    match /tickets/{ticketId} {
+      allow read: if canAccessData(resource.data.sellerId) || request.auth.uid == resource.data.managerId;
+      allow create: if isAdmin() || isManager();
+      allow update: if canAccessData(resource.data.sellerId) || request.auth.uid == resource.data.managerId;
+    }
+
+    // --- Commissions ---
+    match /commissions/{commissionId} {
+      allow read: if canAccessData(resource.data.userId);
+      allow create: if isAdmin() || isManager();
+      allow update: if isAdmin();
+    }
+
+    // --- Notifications ---
+    match /notifications/{notificationId} {
+      allow read, update: if request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn();
+    }
+  }
+}

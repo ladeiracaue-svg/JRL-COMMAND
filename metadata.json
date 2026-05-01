@@ -1,0 +1,11 @@
+{
+  "name": "JRL Sales Command System",
+  "description": "Premium CRM and Virtual Commercial Manager for JRL Chemicals, featuring strategic segmentation, manager commands, and automated sales guidance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "CRM",
+    "Commercial Management",
+    "Sales Strategy",
+    "Internal Communication"
+  ]
+}
