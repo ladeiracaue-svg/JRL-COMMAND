@@ -20,12 +20,15 @@ import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp,
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { logAudit } from '../lib/auditService';
+import { getBaseQuery } from '../lib/permissions';
+import { useTeam } from '../lib/useTeam';
 
 interface ProposalsViewProps {
   profile: UserProfile;
 }
 
 export default function ProposalsView({ profile }: ProposalsViewProps) {
+  const { teamIds, loading: loadingTeam } = useTeam(profile);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,12 +44,15 @@ export default function ProposalsView({ profile }: ProposalsViewProps) {
 
   useEffect(() => {
     // Fetch companies for selection
-    const q = query(collection(db, 'companies'), orderBy('name', 'asc'));
-    const unsub = onSnapshot(q, (snap) => {
+    let qComp = query(collection(db, 'companies'), orderBy('name', 'asc'));
+    if (profile.role === 'seller') {
+       qComp = query(collection(db, 'companies'), where('responsibleUserId', '==', profile.uid), orderBy('name', 'asc'));
+    }
+    const unsub = onSnapshot(qComp, (snap) => {
       setCompanies(snap.docs.map(d => ({ id: d.id, ...d.data() } as Company)));
     });
     return unsub;
-  }, []);
+  }, [profile]);
 
   const addItem = () => {
     setItems([...items, { product: '', packaging: 'Saco 25kg', quantity: 1000, unitPrice: 0, unit: 'kg' }]);
@@ -120,21 +126,19 @@ export default function ProposalsView({ profile }: ProposalsViewProps) {
   };
 
   useEffect(() => {
-    let q = query(collection(db, 'proposals'), orderBy('createdAt', 'desc'));
-    
-    if (profile.role === 'seller') {
-      q = query(collection(db, 'proposals'), where('userId', '==', profile.uid), orderBy('createdAt', 'desc'));
-    }
+    if (loadingTeam) return;
+    const q = getBaseQuery(collection(db, 'proposals'), profile, teamIds);
 
     const unsub = onSnapshot(q, (snap) => {
       setProposals(snap.docs.map(d => ({ id: d.id, ...d.data() } as Proposal)));
       setLoading(false);
     }, (err) => {
       handleFirestoreError(err, OperationType.GET, 'proposals');
+      setLoading(false);
     });
 
     return unsub;
-  }, [profile]);
+  }, [profile, teamIds, loadingTeam]);
 
   const filteredProposals = proposals.filter(p => {
     const matchesSearch = p.userName.toLowerCase().includes(searchTerm.toLowerCase()) || 

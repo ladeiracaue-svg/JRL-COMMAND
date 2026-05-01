@@ -42,6 +42,94 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // --- Auth Components ---
+function ChangePassword({ profile }: { profile: UserProfile }) {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError('As senhas não coincidem.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { updatePassword } = await import('firebase/auth');
+      const { updateDoc, doc, serverTimestamp } = await import('firebase/firestore');
+      
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, newPassword);
+        await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+          mustChangePassword: false,
+          updatedAt: serverTimestamp()
+        });
+        window.location.reload(); // Refresh to update profile in state
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError('Erro ao atualizar senha. Se você demorou muito, faça login novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-primary-900 px-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-10"
+      >
+        <div className="text-center mb-8">
+           <div className="bg-gold/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+             <Settings className="text-gold w-8 h-8 animate-pulse" />
+           </div>
+           <h2 className="text-2xl font-black text-primary-900 uppercase tracking-tighter mb-2">Primeiro Acesso</h2>
+           <p className="text-technical text-sm font-medium">Por segurança, você deve alterar sua senha para continuar.</p>
+        </div>
+
+        <form onSubmit={handleUpdatePassword} className="space-y-4">
+          <div className="space-y-1">
+            <label className="block text-[10px] font-black text-technical uppercase tracking-wider ml-1">Nova Senha</label>
+            <input 
+              type="password" 
+              required
+              className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:ring-2 focus:ring-primary-900 outline-none transition-all font-bold text-sm"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-[10px] font-black text-technical uppercase tracking-wider ml-1">Confirmar Nova Senha</label>
+            <input 
+              type="password" 
+              required
+              className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:ring-2 focus:ring-primary-900 outline-none transition-all font-bold text-sm"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+          </div>
+          {error && <p className="text-red-500 text-[10px] font-bold uppercase text-center">{error}</p>}
+          <button 
+            disabled={loading}
+            className="w-full jrl-btn-primary py-4 mt-6 text-sm flex items-center justify-center gap-3"
+          >
+            {loading ? 'Atualizando...' : 'Definir Senha e Entrar'}
+            <ChevronRight size={18} />
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
 function Login({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -163,8 +251,14 @@ function Login({ onUnauthorized }: { onUnauthorized: () => void }) {
             className="w-full bg-white border-2 border-gray-100 hover:border-primary-900 hover:text-primary-900 py-4 mt-6 flex items-center justify-center gap-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all"
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-            Acesso via Google Workspace
+            Acesso via Google (Recomendado)
           </button>
+          
+          <div className="mt-6 p-4 bg-orange-50 border border-orange-100 rounded-2xl">
+             <p className="text-[9px] font-black uppercase text-orange-700 leading-normal">
+                Nota: Se o login por e-mail estiver bloqueado no console, utilize o botão Google acima com seu e-mail corporativo.
+             </p>
+          </div>
         </div>
         
         <div className="mt-10 text-center opacity-40">
@@ -286,8 +380,8 @@ export default function App() {
   if (loading) return <div className="h-screen w-screen flex items-center justify-center bg-white"><Clock className="animate-spin text-primary-900" /></div>;
 
   if (unauthorized) return <Unauthorized onBack={() => setUnauthorized(false)} />;
-
   if (!user) return <Login onUnauthorized={() => setUnauthorized(true)} />;
+  if (profile?.mustChangePassword) return <ChangePassword profile={profile} />;
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },

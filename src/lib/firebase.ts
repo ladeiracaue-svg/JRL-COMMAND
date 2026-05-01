@@ -28,6 +28,25 @@ export interface FirestoreErrorInfo {
   }
 }
 
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
+export async function logAudit(userId: string, userName: string, entityType: string, entityId: string, action: string, oldValue?: any, newValue?: any) {
+  try {
+    await addDoc(collection(db, 'audit_logs'), {
+      userId,
+      userName,
+      entityType,
+      entityId,
+      action,
+      oldValue: oldValue || null,
+      newValue: newValue || null,
+      createdAt: serverTimestamp()
+    });
+  } catch (err) {
+    console.error('Error logging audit:', err);
+  }
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),

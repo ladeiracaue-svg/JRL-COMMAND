@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
+import { onSnapshot, query, collection, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile } from '../types';
 import { motion } from 'motion/react';
+import { getBaseQuery } from '../lib/permissions';
+import { useTeam } from '../lib/useTeam';
 import { 
   Building2, 
   TrendingUp, 
@@ -25,6 +27,7 @@ function cn(...inputs: any[]) {
 }
 
 export default function DashboardView({ profile }: { profile: UserProfile }) {
+  const { teamIds, loading: loadingTeam } = useTeam(profile);
   const [stats, setStats] = useState({
     activeCompanies: 0,
     openProposalsValue: 0,
@@ -34,43 +37,33 @@ export default function DashboardView({ profile }: { profile: UserProfile }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchStats = async () => {
-      // Real-time listeners for dashboard
-      const qCompanies = profile.role === 'seller' ? 
-        query(collection(db, 'companies'), where('responsibleUserId', '==', profile.uid)) :
-        query(collection(db, 'companies'));
-      
-      const unsubCompanies = onSnapshot(qCompanies, (snap) => {
-        setStats(prev => ({ ...prev, activeCompanies: snap.size }));
-      });
+    if (loadingTeam) return;
 
-      const qProposals = profile.role === 'seller' ?
-        query(collection(db, 'proposals'), where('userId', '==', profile.uid), where('status', '==', 'sent')) :
-        query(collection(db, 'proposals'), where('status', '==', 'sent'));
+    const qCompanies = getBaseQuery(collection(db, 'companies'), profile, teamIds);
+    const unsubCompanies = onSnapshot(qCompanies, (snap) => {
+      setStats(prev => ({ ...prev, activeCompanies: snap.size }));
+    });
 
-      const unsubProposals = onSnapshot(qProposals, (snap) => {
-        const total = snap.docs.reduce((acc, d) => acc + (d.data().totalValue || 0), 0);
-        setStats(prev => ({ ...prev, openProposalsValue: total }));
-      });
+    const qProposals = getBaseQuery(collection(db, 'proposals'), profile, teamIds);
+    const unsubProposals = onSnapshot(qProposals, (snap) => {
+      const sentProposals = snap.docs.filter(d => d.data().status === 'sent');
+      const total = sentProposals.reduce((acc, d) => acc + (d.data().totalValue || 0), 0);
+      setStats(prev => ({ ...prev, openProposalsValue: total }));
+    });
 
-      const qTickets = profile.role === 'seller' ?
-        query(collection(db, 'tickets'), where('sellerId', '==', profile.uid), where('status', '!=', 'concluido')) :
-        query(collection(db, 'tickets'), where('status', '!=', 'concluido'));
+    const qTickets = getBaseQuery(collection(db, 'tickets'), profile, teamIds);
+    const unsubTickets = onSnapshot(qTickets, (snap) => {
+      const activeTickets = snap.docs.filter(d => d.data().status !== 'concluido');
+      setStats(prev => ({ ...prev, urgentTickets: activeTickets.length }));
+      setLoading(false);
+    });
 
-      const unsubTickets = onSnapshot(qTickets, (snap) => {
-        setStats(prev => ({ ...prev, urgentTickets: snap.size }));
-        setLoading(false);
-      });
-
-      return () => {
-        unsubCompanies();
-        unsubProposals();
-        unsubTickets();
-      };
+    return () => {
+      unsubCompanies();
+      unsubProposals();
+      unsubTickets();
     };
-
-    fetchStats();
-  }, [profile]);
+  }, [profile, teamIds, loadingTeam]);
 
   const kpis = [
     { label: 'Contas na Carteira', value: stats.activeCompanies.toString(), trend: 'Real-time', icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50' },

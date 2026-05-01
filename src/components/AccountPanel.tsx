@@ -40,11 +40,12 @@ interface AccountPanelProps {
 }
 
 export default function AccountPanel({ company, profile, onClose }: AccountPanelProps) {
-  const [activeTab, setActiveTab] = useState<'strategy' | 'actions' | 'tickets' | 'details' | 'history'>('strategy');
+  const [activeTab, setActiveTab] = useState<'strategy' | 'actions' | 'tickets' | 'details' | 'history' | 'branches'>('strategy');
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [interactionText, setInteractionText] = useState('');
   const [interactionType, setInteractionType] = useState('call');
@@ -52,16 +53,20 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
   const [isEditingAccount, setIsEditingAccount] = useState(false);
   const [isAddingContact, setIsAddingContact] = useState(false);
   const [isAddingBranch, setIsAddingBranch] = useState(false);
-  const [editData, setEditData] = useState<Partial<Company>>({});
-  const [newContact, setNewContact] = useState<Partial<Contact>>({ role: 'Purchasing', isPrimary: false });
-  const [newBranch, setNewBranch] = useState<Partial<Branch>>({ active: true });
-  const [sellers, setSellers] = useState<{uid: string, name: string}[]>([]);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+
+  // Edit State
+  const [editData, setEditData] = useState<Partial<Company>>({});
+  const [branchData, setBranchData] = useState<Partial<Branch>>({ active: true });
+  const [isEditingBranch, setIsEditingBranch] = useState(false);
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+
+  const [sellers, setSellers] = useState<{uid: string, name: string}[]>([]);
   
   // Mission and Strategy
-  const strategy = getStrategy(company.segment);
+  const strategy = getStrategy(company.segmentoIndustrial);
   const mission = getMission(company);
-  const { score, reason } = calculateCompanyScore(company);
+  const { score } = calculateCompanyScore(company);
 
   useEffect(() => {
     if (profile.role !== 'seller') {
@@ -105,11 +110,23 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
       setLoading(false);
     });
 
+    // Fetch audit logs
+    const qLogs = query(
+      collection(db, 'auditLogs'),
+      where('entityId', '==', company.id),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+    const unsubLogs = onSnapshot(qLogs, (snap) => {
+       setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     return () => {
       unsubInter();
       unsubTickets();
       unsubBranches();
       unsubContacts();
+      unsubLogs();
     };
   }, [company.id]);
 
@@ -136,37 +153,74 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
   const handleSaveAccount = async () => {
     try {
       const docRef = doc(db, 'companies', company.id);
+      
+      // Portfolio Rotation Logic
+      if (editData.responsibleUserId && editData.responsibleUserId !== company.responsibleUserId) {
+        const reason = prompt('Motivo para a transferência de carteira:');
+        const newSeller = sellers.find(s => s.uid === editData.responsibleUserId);
+        
+        await logAudit(
+          profile.uid,
+          profile.name,
+          'company',
+          company.id,
+          'Rodízio de Carteira / Alteração de Vendedor',
+          { sellerId: company.responsibleUserId, sellerName: company.responsibleUserName },
+          { sellerId: editData.responsibleUserId, sellerName: newSeller?.name, reason }
+        );
+
+        // Notify new seller (via interactions as a proxy for now)
+        await addDoc(collection(db, 'companies', company.id, 'interactions'), {
+          userId: profile.uid,
+          userName: profile.name,
+          type: 'note',
+          description: `CARTEIRA ALTERADA: De ${company.responsibleUserName} para ${newSeller?.name}. Motivo: ${reason || 'Não informado'}`,
+          createdAt: serverTimestamp()
+        });
+      } else {
+        await logAudit(profile.uid, profile.name, 'company', company.id, 'Atualização de ficha cadastral');
+      }
+
       await updateDoc(docRef, { ...editData, updatedAt: serverTimestamp() });
-      await logAudit(profile.uid, profile.name, 'company', company.id, 'Dados da conta atualizados');
       setIsEditingAccount(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, 'companies');
     }
   };
 
-  const handleAddContact = async () => {
-    if (!newContact.name) return;
+  const toggleCompanyActive = async () => {
+    if (!confirm(`Deseja realmente ${company.active ? 'inativar' : 'ativar'} esta empresa?`)) return;
     try {
-      await addDoc(collection(db, 'companies', company.id, 'contacts'), {
-        ...newContact,
-        createdAt: serverTimestamp()
-      });
-      setIsAddingContact(false);
-      setNewContact({ role: 'Purchasing', isPrimary: false });
+      const docRef = doc(db, 'companies', company.id);
+      await updateDoc(docRef, { active: !company.active, updatedAt: serverTimestamp() });
+      await logAudit(profile.uid, profile.name, 'company', company.id, company.active ? 'Empresa Inativada' : 'Empresa Reativada');
+      onClose();
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'contacts');
+      handleFirestoreError(err, OperationType.UPDATE, 'companies');
     }
   };
 
-  const handleAddBranch = async () => {
-    if (!newBranch.unitName) return;
+  const handleSaveBranch = async () => {
     try {
-      await addDoc(collection(db, 'companies', company.id, 'branches'), {
-        ...newBranch,
-        createdAt: serverTimestamp()
-      });
-      setIsAddingBranch(false);
-      setNewBranch({ active: true });
+      const { setDoc, doc, addDoc } = await import('firebase/firestore');
+      if (activeBranchId) {
+        await setDoc(doc(db, 'companies', company.id, 'branches', activeBranchId), {
+           ...branchData,
+           updatedAt: serverTimestamp()
+        }, { merge: true });
+        await logAudit(profile.uid, profile.name, 'branch', activeBranchId, 'Filial Atualizada');
+      } else {
+        const branchRef = await addDoc(collection(db, 'companies', company.id, 'branches'), {
+           ...branchData,
+           companyId: company.id,
+           createdAt: serverTimestamp(),
+           updatedAt: serverTimestamp()
+        });
+        await logAudit(profile.uid, profile.name, 'branch', branchRef.id, 'Filial Criada');
+      }
+      setIsEditingBranch(false);
+      setBranchData({ active: true });
+      setActiveBranchId(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'branches');
     }
@@ -263,11 +317,12 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
       {/* Tabs */}
       <div className="flex border-b border-gray-100 bg-gray-50 shrink-0 overflow-x-auto no-scrollbar">
         {[
-          { id: 'strategy', label: 'Estratégia', icon: Target },
+          { id: 'strategy', label: 'IA', icon: Target },
+          { id: 'details', label: 'Ficha', icon: ShieldCheck },
+          { id: 'branches', label: 'Filiais', icon: Building2 },
           { id: 'actions', label: 'Ações', icon: CheckCircle2 },
-          { id: 'details', label: 'Dados', icon: ShieldCheck },
-          { id: 'tickets', label: 'Tickets', icon: MessageSquare },
-          { id: 'history', label: 'Histórico', icon: History },
+          { id: 'tickets', label: 'Gestor', icon: MessageSquare },
+          { id: 'history', label: 'Log', icon: History },
         ].map(t => (
           <button 
             key={t.id}
@@ -423,122 +478,223 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
 
         {activeTab === 'details' && (
           <div className="space-y-8 pb-20">
+            {/* Action Header */}
+            <div className="flex items-center justify-between">
+               <h3 className="font-black text-xl uppercase tracking-tighter text-primary-900">Ficha Cadastral</h3>
+               <div className="flex gap-2">
+                  {(profile.role === 'admin' || profile.role === 'manager') && (
+                    <button 
+                      onClick={toggleCompanyActive}
+                      className={cn(
+                        "p-2 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all",
+                        company.active ? "bg-red-50 text-red-600 border-red-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                      )}
+                    >
+                      {company.active ? 'Inativar' : 'Reativar'}
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => {
+                      setEditData(company);
+                      setIsEditingAccount(true);
+                    }}
+                    className="p-2 px-4 bg-primary-900 text-gold rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:shadow-gold/20 transition-all"
+                  >
+                    Editar Ficha
+                  </button>
+               </div>
+            </div>
+
             {/* Fiscal & Address */}
-            <div className="jrl-card p-6">
+            <div className="jrl-card p-6 border-l-4 border-l-primary-900">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
-                <ShieldCheck size={20} className="text-primary-900" /> Ficha Cadastral Matriz
+                <ShieldCheck size={20} className="text-primary-900" /> Identidade & Localização
               </h3>
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-technical mb-1">Razão Social</p>
-                  <p className="text-sm font-medium text-slate-800">{company.name}</p>
+                  <p className="text-[10px] uppercase font-bold text-technical mb-0.5 opacity-60 tracking-wider">Razão Social</p>
+                  <p className="text-sm font-black text-primary-900">{company.razaoSocial}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-technical mb-1">CNPJ</p>
-                  <p className="text-sm font-medium text-slate-800">{company.cnpj}</p>
+                  <p className="text-[10px] uppercase font-bold text-technical mb-0.5 opacity-60 tracking-wider">Nome Fantasia</p>
+                  <p className="text-sm font-bold text-slate-800">{company.nomeFantasia || '--'}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-technical mb-1">I.E.</p>
-                  <p className="text-sm font-medium text-slate-800">{company.stateRegistration || '--'}</p>
+                  <p className="text-[10px] uppercase font-bold text-technical mb-0.5 opacity-60 tracking-wider">CNPJ</p>
+                  <p className="text-sm font-bold text-slate-800">{company.cnpj}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-technical mb-1">Cidade/UF</p>
-                  <p className="text-sm font-medium text-slate-800">{company.address.city}, {company.address.state}</p>
+                  <p className="text-[10px] uppercase font-bold text-technical mb-0.5 opacity-60 tracking-wider">I.E.</p>
+                  <p className="text-sm font-bold text-slate-800">{company.inscricaoEstadual || '--'}</p>
                 </div>
-                <div className="col-span-2">
-                  <p className="text-[10px] uppercase font-bold text-technical mb-1">Endereço Completo</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {company.address.street}, {company.address.number} {company.address.complement && ` - ${company.address.complement}`}
-                    <br />
-                    {company.address.neighborhood} - CEP: {company.address.zip}
-                  </p>
+                <div className="col-span-2 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                  <p className="text-[10px] uppercase font-bold text-technical mb-2 opacity-60 tracking-wider">Endereço Principal</p>
+                  <div className="flex items-start gap-3">
+                     <MapPin size={18} className="text-gold shrink-0 mt-1" />
+                     <div>
+                        <p className="text-xs font-bold text-slate-900">{company.endereco}, {company.numero} {company.complemento && ` - ${company.complemento}`}</p>
+                        <p className="text-[11px] text-technical">{company.bairro} - {company.cidade} / {company.uf} - CEP: {company.cep}</p>
+                     </div>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            {/* Financial Info */}
-            <div className="jrl-card p-6 bg-slate-900 text-white">
-              <h3 className="font-bold text-lg mb-4 flex items-center gap-2 border-b border-white/10 pb-2">
-                <FileText size={20} className="text-gold" /> Comercial & Financeiro
-              </h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-white/40 mb-1">Condição de Pagamento</p>
-                  <p className="text-sm font-medium text-gold">{company.paymentTerms || 'Padrão'}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-white/40 mb-1">Limite de Crédito</p>
-                  <p className="text-sm font-medium text-white">R$ {(company.creditLimit || 0).toLocaleString('pt-BR')}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-white/40 mb-1">Frete Padrão</p>
-                  <p className="text-sm font-medium text-white">{company.defaultFreightType || 'CIF'} - {company.preferredCarrier || 'Correios/Transportadora'}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-white/40 mb-1">Vendedor Responsável</p>
-                  <p className="text-sm font-medium text-white">{company.responsibleUserName}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Branches */}
-            <div>
-              <div className="flex items-center justify-between mb-4 px-2">
-                <h3 className="font-black text-lg uppercase tracking-tighter text-primary-900">Unidades / Filiais</h3>
-                <button className="jrl-btn-primary py-2 px-3 text-[10px]"><Plus size={14} /> Nova Filial</button>
-              </div>
-              {branches.length === 0 ? (
-                <div className="jrl-card p-8 border-dashed border-2 flex flex-col items-center justify-center text-center opacity-40">
-                  <Building2 size={32} className="mb-2" />
-                  <p className="text-xs font-bold uppercase">Nenhuma filial vinculada</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {branches.map(b => (
-                    <div key={b.id} className="jrl-card p-4 hover:shadow-lg transition-all cursor-pointer">
-                      <div className="flex justify-between items-start mb-2">
-                         <h5 className="font-black text-primary-900 text-sm">{b.unitName}</h5>
-                         <span className="text-[10px] font-bold text-technical">{b.cnpj}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mb-2 italic">"{b.observations || 'Naluma observação registrada'}"</p>
-                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase">
-                        <MapPin size={12} className="text-gold" /> {b.address}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Contacts */}
-            <div>
-              <div className="flex items-center justify-between mb-4 px-2">
-                <h3 className="font-black text-lg uppercase tracking-tighter text-primary-900">Contatos Chave</h3>
-                <button className="jrl-btn-secondary py-2 px-3 text-[10px] text-primary-900 border-primary-900"><Plus size={14} /> Novo Contato</button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {contacts.map(c => (
-                  <div key={c.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col">
-                    <div className="flex justify-between items-start mb-3">
-                       <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
-                         c.role === 'Purchasing' ? 'bg-indigo-100 text-indigo-700' :
-                         c.role === 'Technical' ? 'bg-amber-100 text-amber-700' :
-                         'bg-gray-100 text-gray-700'
-                       }`}>
-                         {c.role}
-                       </span>
-                       {c.isPrimary && <ShieldCheck size={14} className="text-emerald-500" />}
-                    </div>
-                    <h5 className="font-bold text-slate-900 text-sm mb-1">{c.name}</h5>
-                    <div className="space-y-1 mt-auto">
-                      <p className="text-[10px] text-slate-500 flex items-center gap-1"><Phone size={10} /> {c.phone}</p>
-                      <p className="text-[10px] text-slate-500 flex items-center gap-1"><FileText size={10} /> {c.email}</p>
-                    </div>
-                  </div>
-                ))}
+            <div className="jrl-card p-6">
+               <h3 className="font-bold text-lg mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
+                <Phone size={20} className="text-primary-900" /> Contato Direto
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div>
+                   <p className="text-[10px] uppercase font-bold text-technical mb-0.5 opacity-60 tracking-wider">Telefone Principal</p>
+                   <p className="text-sm font-bold text-slate-800">{company.telefonePrincipal}</p>
+                 </div>
+                 <div>
+                   <p className="text-[10px] uppercase font-bold text-technical mb-0.5 opacity-60 tracking-wider">WhatsApp Comercial</p>
+                   <p className="text-sm font-bold text-emerald-600">{company.whatsapp || '--'}</p>
+                 </div>
+                 <div className="col-span-2">
+                   <p className="text-[10px] uppercase font-bold text-technical mb-0.5 opacity-60 tracking-wider">E-mail Corporativo</p>
+                   <p className="text-sm font-bold text-slate-800 break-all">{company.emailPrincipal}</p>
+                 </div>
               </div>
             </div>
+
+            {/* Commercial Info */}
+            <div className="jrl-card p-6 bg-primary-900 text-white rounded-3xl shadow-xl">
+              <h3 className="font-bold text-lg mb-6 flex items-center gap-2 border-b border-white/10 pb-4">
+                <FileText size={20} className="text-gold" /> Estrutura Comercial
+              </h3>
+              <div className="grid grid-cols-2 gap-8">
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-white/40 mb-1 tracking-widest">Condição de Pagto</p>
+                  <p className="text-sm font-black text-gold">{company.condicaoPagamento || 'Padrão'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-white/40 mb-1 tracking-widest">Limite de Crédito</p>
+                  <p className="text-sm font-black text-white">R$ {(company.limiteCredito || 0).toLocaleString('pt-BR')}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-white/40 mb-1 tracking-widest">Frete Padrão</p>
+                  <p className="text-sm font-bold text-white">{company.tipoFretePadrao || 'CIF'} - {company.transportadoraPreferencial || 'Transportadora'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-white/40 mb-1 tracking-widest">Responsável Atual</p>
+                  <p className="text-sm font-black text-white flex items-center gap-2">
+                     <Target size={14} className="text-gold" />
+                     {company.responsibleUserName}
+                  </p>
+                </div>
+                <div className="col-span-2 border-t border-white/10 pt-4">
+                  <p className="text-[10px] uppercase font-bold text-white/40 mb-2 tracking-widest">Representantes do Cliente</p>
+                  <div className="text-[11px] grid grid-cols-3 gap-2">
+                     <div>
+                        <span className="block opacity-50">Comprador</span>
+                        <span className="font-bold">{company.compradorResponsavel || '--'}</span>
+                     </div>
+                     <div>
+                        <span className="block opacity-50">Financeiro</span>
+                        <span className="font-bold">{company.financeiroResponsavel || '--'}</span>
+                     </div>
+                     <div>
+                        <span className="block opacity-50">Técnico</span>
+                        <span className="font-bold">{company.tecnicoResponsavel || '--'}</span>
+                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Management Notes */}
+            <div className="space-y-4">
+               {company.alertaGestor && (
+                 <div className="p-4 bg-red-50 border-2 border-red-500/20 rounded-2xl flex gap-3 items-start shadow-sm">
+                    <AlertCircle size={20} className="text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                       <p className="text-[10px] font-black uppercase text-red-700 tracking-widest mb-1">ALERTA ESTRATÉGICO</p>
+                       <p className="text-xs font-bold text-red-900 leading-relaxed">{company.alertaGestor}</p>
+                    </div>
+                 </div>
+               )}
+               <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100">
+                  <h5 className="text-[10px] font-black uppercase text-amber-700 tracking-widest mb-3">Observações Internas</h5>
+                  <p className="text-sm font-medium text-amber-900 leading-relaxed whitespace-pre-wrap">{company.observacoesInternas || 'Nenhuma observação interna disponível.'}</p>
+               </div>
+            </div>
           </div>
+        )}
+
+        {activeTab === 'branches' && (
+           <div className="space-y-6 pb-20">
+              <div className="flex items-center justify-between">
+                 <h3 className="font-black text-xl uppercase tracking-tighter text-primary-900">Unidades de Negócio</h3>
+                 <button 
+                  onClick={() => {
+                    setBranchData({ active: true });
+                    setActiveBranchId(null);
+                    setIsEditingBranch(true);
+                  }}
+                  className="jrl-btn-primary py-2 px-4 shadow-lg"
+                 >
+                   <Plus size={16} /> Nova Filial
+                 </button>
+              </div>
+
+              {branches.length === 0 ? (
+                <div className="py-20 border-2 border-dashed border-gray-200 rounded-3xl flex flex-col items-center justify-center text-center px-8">
+                   <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                      <Building2 size={32} className="text-gray-300" />
+                   </div>
+                   <h4 className="font-black text-gray-400 uppercase text-xs tracking-widest">Nenhuma unidade vinculada</h4>
+                   <p className="text-[11px] text-technical mt-2">Cadastre filiais para mapear o consumo em diferentes regiões.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                   {branches.map(b => (
+                     <motion.div 
+                        key={b.id} 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={cn(
+                          "jrl-card p-5 group hover:shadow-xl transition-all border-l-4",
+                          b.active ? "border-l-emerald-500" : "border-l-gray-300 opacity-60"
+                        )}
+                     >
+                        <div className="flex justify-between items-start mb-4">
+                           <div>
+                              <h5 className="font-black text-primary-900 text-base">{b.nomeUnidade}</h5>
+                              <p className="text-[10px] font-bold text-technical uppercase opacity-60">CNPJ: {b.cnpj}</p>
+                           </div>
+                           <button 
+                              onClick={() => {
+                                setBranchData(b);
+                                setActiveBranchId(b.id);
+                                setIsEditingBranch(true);
+                              }}
+                              className="p-2 text-primary-900 hover:bg-primary-50 rounded-lg transition-all"
+                           >
+                              Editar
+                           </button>
+                        </div>
+                        <div className="space-y-2 mb-4">
+                           <div className="flex items-center gap-2 text-[11px] font-medium text-slate-600">
+                             <MapPin size={14} className="text-gold" />
+                             {b.cidade} - {b.uf}
+                           </div>
+                           <div className="flex items-center gap-2 text-[11px] font-medium text-slate-600">
+                             <Target size={14} className="text-gold" />
+                             Resp: {b.compradorResponsavel || '--'}
+                           </div>
+                        </div>
+                        <p className="text-[11px] text-slate-500 italic bg-gray-50 p-2 rounded-lg leading-relaxed">
+                           "{b.observacoes || 'Sem observações registradas.'}"
+                        </p>
+                     </motion.div>
+                   ))}
+                </div>
+              )}
+           </div>
         )}
 
         {activeTab === 'tickets' && (
@@ -607,29 +763,54 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
         )}
 
         {activeTab === 'history' && (
-          <div className="space-y-6">
-             <h3 className="font-bold text-lg">Timeline de Atividades</h3>
-             <div className="relative space-y-8 before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-100">
-                {interactions.map((inter, i) => (
-                  <div key={i} className="relative pl-12">
-                    <div className="absolute left-0 top-0 w-10 h-10 rounded-full bg-white border-2 border-gray-100 flex items-center justify-center z-10">
-                      <MessageSquare size={16} className="text-primary-800" />
+          <div className="space-y-8 pb-20">
+             <div>
+                <h3 className="font-black text-xl uppercase tracking-tighter text-primary-900 mb-6">Auditoria & Logs</h3>
+                <div className="space-y-4">
+                   {auditLogs.length === 0 ? (
+                      <div className="text-center py-10 opacity-30">
+                        <History size={48} className="mx-auto mb-2" />
+                        <p className="text-xs font-black uppercase">Nenhum log estratégico</p>
+                      </div>
+                   ) : (
+                      auditLogs.map(log => (
+                        <div key={log.id} className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                           <div className="flex justify-between items-start mb-2">
+                              <span className="text-[9px] font-black uppercase text-gold leading-none tracking-widest">{log.action}</span>
+                              <span className="text-[9px] font-bold text-technical">{format(log.createdAt?.toDate() || new Date(), 'dd/MM/yy HH:mm')}</span>
+                           </div>
+                           <p className="text-xs font-bold text-slate-900 mb-2">{log.userName}</p>
+                           {log.newValue?.reason && (
+                             <div className="p-2 bg-orange-50 border border-orange-100 rounded-lg text-[10px] text-orange-800 font-medium">
+                                Motivo: {log.newValue.reason}
+                             </div>
+                           )}
+                        </div>
+                      ))
+                   )}
+                </div>
+             </div>
+
+             <div className="border-t border-gray-100 pt-8">
+                <h3 className="font-black text-xl uppercase tracking-tighter text-primary-900 mb-6">Linha do Tempo</h3>
+                <div className="relative space-y-8 before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-100">
+                  {interactions.map((inter, i) => (
+                    <div key={i} className="relative pl-12">
+                      <div className="absolute left-0 top-0 w-10 h-10 rounded-full bg-white border-2 border-gray-100 flex items-center justify-center z-10">
+                        <MessageSquare size={16} className={cn(inter.type === 'mission_completed' ? 'text-emerald-500' : 'text-primary-800')} />
+                      </div>
+                      <div className="jrl-card p-4">
+                        <div className="flex justify-between items-start mb-1 text-xs">
+                            <span className="font-bold text-primary-900">{inter.userName}</span>
+                            <span className="text-technical">{format(inter.createdAt?.toDate() || new Date(), "dd 'de' MMMM", { locale: ptBR })}</span>
+                        </div>
+                        <p className={cn("text-xs leading-relaxed", inter.type === 'mission_completed' ? 'font-bold text-emerald-700 italic' : 'text-slate-700')}>
+                          {inter.description}
+                        </p>
+                      </div>
                     </div>
-                    <div className="jrl-card p-4">
-                       <div className="flex justify-between items-start mb-1 text-xs">
-                          <span className="font-bold text-primary-900">{inter.userName}</span>
-                          <span className="text-technical">{format(inter.createdAt?.toDate() || new Date(), "dd 'de' MMMM, HH:mm", { locale: ptBR })}</span>
-                       </div>
-                       <p className="text-sm text-slate-700 leading-relaxed">{inter.description}</p>
-                       {inter.nextStep && (
-                         <div className="mt-3 bg-gray-50 p-2 rounded-lg text-xs border border-gray-100">
-                           <span className="font-bold text-gold uppercase text-[9px] block mb-1 tracking-wider">Próximo Passo</span>
-                           {inter.nextStep}
-                         </div>
-                       )}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
              </div>
           </div>
         )}
@@ -675,6 +856,182 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
             </AnimatePresence>
           </div>
       </div>
+      {/* Modals for Editing and Adding */}
+      <AnimatePresence>
+         {isEditingAccount && (
+           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsEditingAccount(false)} className="absolute inset-0 bg-primary-900/40 backdrop-blur-sm" />
+              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-white rounded-3xl w-full max-w-2xl h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+                 <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <h3 className="font-black text-primary-900 uppercase tracking-tighter">Editar Ficha Estratégica</h3>
+                    <button onClick={() => setIsEditingAccount(false)}><X size={20} /></button>
+                 </div>
+                 <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                    {/* SECTION A: DADOS DA EMPRESA */}
+                    <div className="space-y-4">
+                       <h4 className="text-[10px] font-black uppercase text-primary-900 border-b pb-1 tracking-widest">Identidade</h4>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="md:col-span-2">
+                             <label className="text-[10px] font-black uppercase text-technical">Razão Social</label>
+                             <input type="text" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.razaoSocial} onChange={(e) => setEditData({...editData, razaoSocial: e.target.value})} />
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">Nome Fantasia</label>
+                             <input type="text" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.nomeFantasia} onChange={(e) => setEditData({...editData, nomeFantasia: e.target.value})} />
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">Segmento</label>
+                             <input type="text" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.segmentoIndustrial} onChange={(e) => setEditData({...editData, segmentoIndustrial: e.target.value})} />
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">Status</label>
+                             <select className="w-full p-3 bg-gray-50 rounded-xl font-bold" value={editData.statusComercial} onChange={(e) => setEditData({...editData, statusComercial: e.target.value as any})}>
+                                {statusOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                             </select>
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">Vendedor Responsável</label>
+                             <select 
+                               disabled={profile.role === 'seller'}
+                               className="w-full p-3 bg-gray-50 rounded-xl disabled:opacity-50 font-bold" 
+                               value={editData.responsibleUserId} 
+                               onChange={(e) => {
+                                  const s = sellers.find(x => x.uid === e.target.value);
+                                  setEditData({...editData, responsibleUserId: e.target.value, responsibleUserName: s?.name || ''});
+                               }}
+                             >
+                                {sellers.map(s => <option key={s.uid} value={s.uid}>{s.name}</option>)}
+                             </select>
+                          </div>
+                       </div>
+                    </div>
+
+                    {/* SECTION B: LOCALIZAÇÃO & CONTATO */}
+                    <div className="space-y-4">
+                       <h4 className="text-[10px] font-black uppercase text-primary-900 border-b pb-1 tracking-widest">Localização & Contato</h4>
+                       <div className="grid grid-cols-2 gap-4">
+                          <div className="col-span-2">
+                             <label className="text-[10px] font-black uppercase text-technical">Endereço</label>
+                             <input type="text" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.endereco} onChange={(e) => setEditData({...editData, endereco: e.target.value})} />
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">Cidade</label>
+                             <input type="text" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.cidade} onChange={(e) => setEditData({...editData, cidade: e.target.value})} />
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">UF</label>
+                             <input type="text" maxLength={2} className="w-full p-3 bg-gray-50 rounded-xl" value={editData.uf} onChange={(e) => setEditData({...editData, uf: e.target.value.toUpperCase()})} />
+                          </div>
+                          <div className="col-span-2 grid grid-cols-2 gap-4">
+                             <div>
+                                <label className="text-[10px] font-black uppercase text-technical">Telefone Principal</label>
+                                <input type="text" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.telefonePrincipal} onChange={(e) => setEditData({...editData, telefonePrincipal: e.target.value})} />
+                             </div>
+                             <div>
+                                <label className="text-[10px] font-black uppercase text-technical">E-mail Principal</label>
+                                <input type="email" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.emailPrincipal} onChange={(e) => setEditData({...editData, emailPrincipal: e.target.value})} />
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+
+                    {/* SECTION C: COMERCIAL */}
+                    <div className="space-y-4">
+                       <h4 className="text-[10px] font-black uppercase text-primary-900 border-b pb-1 tracking-widest">Comercial & Financeiro</h4>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">Cond. Pagamento</label>
+                             <input type="text" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.condicaoPagamento} onChange={(e) => setEditData({...editData, condicaoPagamento: e.target.value})} />
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">Limite Crédito</label>
+                             <input type="number" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.limiteCredito} onChange={(e) => setEditData({...editData, limiteCredito: Number(e.target.value)})} />
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">Transportadora</label>
+                             <input type="text" className="w-full p-3 bg-gray-50 rounded-xl" value={editData.transportadoraPreferencial} onChange={(e) => setEditData({...editData, transportadoraPreferencial: e.target.value})} />
+                          </div>
+                          <div>
+                             <label className="text-[10px] font-black uppercase text-technical">Frete Padrão</label>
+                             <select className="w-full p-3 bg-gray-50 rounded-xl font-bold" value={editData.tipoFretePadrao} onChange={(e) => setEditData({...editData, tipoFretePadrao: e.target.value as any})}>
+                                <option value="CIF">CIF</option>
+                                <option value="FOB">FOB</option>
+                             </select>
+                          </div>
+                       </div>
+                    </div>
+
+                    {/* SECTION D: GESTÃO */}
+                    <div className="space-y-4">
+                       <h4 className="text-[10px] font-black uppercase text-primary-900 border-b pb-1 tracking-widest text-red-600 border-red-100">Gestão & Auditoria</h4>
+                       <div>
+                          <label className="text-[10px] font-black uppercase text-red-700">Alerta do Gestor</label>
+                          <input 
+                              disabled={profile.role === 'seller'}
+                              type="text" 
+                              className="w-full p-3 bg-red-50 rounded-xl font-bold border border-red-100" 
+                              value={editData.alertaGestor} 
+                              onChange={(e) => setEditData({...editData, alertaGestor: e.target.value})} 
+                          />
+                       </div>
+                       <div>
+                          <label className="text-[10px] font-black uppercase text-technical">Observações Internas (Somente Gestores)</label>
+                          <textarea 
+                             disabled={profile.role === 'seller'}
+                             rows={4} 
+                             className="w-full p-3 bg-gray-100 rounded-xl disabled:opacity-50" 
+                             value={editData.observacoesInternas} 
+                             onChange={(e) => setEditData({...editData, observacoesInternas: e.target.value})} 
+                          />
+                       </div>
+                    </div>
+                 </div>
+                 <div className="p-6 border-t border-gray-100 flex gap-2">
+                    <button onClick={() => setIsEditingAccount(false)} className="flex-1 py-3 border border-gray-100 rounded-xl font-bold">Cancelar</button>
+                    <button onClick={handleSaveAccount} className="flex-1 py-3 bg-primary-900 text-gold rounded-xl font-black uppercase tracking-widest">Salvar Alterações</button>
+                 </div>
+              </motion.div>
+           </div>
+         )}
+
+         {isEditingBranch && (
+            <div className="fixed inset-0 z-[75] flex items-center justify-center p-4">
+               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsEditingBranch(false)} className="absolute inset-0 bg-primary-900/60" />
+               <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-white rounded-3xl w-full max-w-xl shadow-2xl p-8 space-y-6">
+                  <div className="flex justify-between items-center mb-4">
+                     <h3 className="font-black text-lg uppercase">Configurar Filial / Unidade</h3>
+                     <button onClick={() => setIsEditingBranch(false)}><X size={20} /></button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="md:col-span-2">
+                        <label className="text-[10px] font-black uppercase opacity-60">Nome da Unidade *</label>
+                        <input type="text" required className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl" value={branchData.nomeUnidade} onChange={(e) => setBranchData({...branchData, nomeUnidade: e.target.value})} />
+                     </div>
+                     <div>
+                        <label className="text-[10px] font-black uppercase opacity-60">CNPJ Filial</label>
+                        <input type="text" className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl" value={branchData.cnpj} onChange={(e) => setBranchData({...branchData, cnpj: e.target.value})} />
+                     </div>
+                     <div>
+                        <label className="text-[10px] font-black uppercase opacity-60">Cidade / UF</label>
+                        <input type="text" className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl" value={branchData.cidade} onChange={(e) => setBranchData({...branchData, cidade: e.target.value, uf: branchData.uf})} />
+                     </div>
+                     <div className="md:col-span-2">
+                        <label className="text-[10px] font-black uppercase opacity-60">Observações de Filial</label>
+                        <textarea className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl" value={branchData.observacoes} onChange={(e) => setBranchData({...branchData, observacoes: e.target.value})} />
+                     </div>
+                     <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={branchData.active} onChange={(e) => setBranchData({...branchData, active: e.target.checked})} />
+                        <span className="text-xs font-bold uppercase">Filial Ativa</span>
+                     </label>
+                  </div>
+                  <div className="flex gap-2 pt-4">
+                     <button onClick={() => setIsEditingBranch(false)} className="flex-1 py-3 border border-gray-100 rounded-xl">Cancelar</button>
+                     <button onClick={handleSaveBranch} className="flex-1 py-3 bg-primary-900 text-gold rounded-xl font-black uppercase tracking-widest shadow-xl">Salvar Unidade</button>
+                  </div>
+               </motion.div>
+            </div>
+         )}
+      </AnimatePresence>
     </motion.div>
   );
 }

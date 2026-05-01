@@ -33,22 +33,28 @@ service cloud.firestore {
 
     // Profiles
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if isSignedIn() && (isAdmin() || request.auth.uid == userId || (isManager() && resource.data.managerId == request.auth.uid));
+      allow create: if isAdmin() || (isManager() && request.resource.data.role == 'seller' && request.resource.data.managerId == request.auth.uid);
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        (request.auth.uid == userId && 
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'active', 'managerId', 'commissionRateDefault'])) ||
+        (isManager() && resource.data.managerId == request.auth.uid && resource.data.role == 'seller')
+      );
     }
 
     // Companies
     match /companies/{companyId} {
       allow read: if isSignedIn() && isUserActive() && (
         isAdmin() || 
-        (isManager() && (resource.data.managerId == request.auth.uid || resource.data.responsibleUserId == request.auth.uid)) ||
-        (resource.data.responsibleUserId == request.auth.uid)
+        resource.data.responsibleUserId == request.auth.uid ||
+        (isManager() && get(/databases/$(database)/documents/users/$(resource.data.responsibleUserId)).data.managerId == request.auth.uid)
       );
       allow create: if isSignedIn() && isUserActive();
       allow update: if isSignedIn() && isUserActive() && (
         isAdmin() || 
-        resource.data.responsibleUserId == request.auth.uid ||
-        (isManager() && resource.data.managerId == request.auth.uid)
+        (resource.data.responsibleUserId == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['responsibleUserId'])) ||
+        (isManager() && get(/databases/$(database)/documents/users/$(resource.data.responsibleUserId)).data.managerId == request.auth.uid)
       );
       allow delete: if isAdmin();
 

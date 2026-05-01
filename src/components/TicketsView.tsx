@@ -17,8 +17,11 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
+import { getBaseQuery } from '../lib/permissions';
+import { useTeam } from '../lib/useTeam';
 
 export default function TicketsView({ profile }: { profile: UserProfile }) {
+  const { teamIds, loading: loadingTeam } = useTeam(profile);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sellers, setSellers] = useState<{uid: string, name: string}[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -66,23 +69,19 @@ export default function TicketsView({ profile }: { profile: UserProfile }) {
   };
 
   useEffect(() => {
-    let q = query(collection(db, 'tickets'), orderBy('updatedAt', 'desc'));
-    
-    if (profile.role === 'seller') {
-      q = query(collection(db, 'tickets'), where('sellerId', '==', profile.uid), orderBy('updatedAt', 'desc'));
-    } else if (profile.role === 'manager') {
-       q = query(collection(db, 'tickets'), where('managerId', '==', profile.uid), orderBy('updatedAt', 'desc'));
-    }
+    if (loadingTeam) return;
+    const q = getBaseQuery(collection(db, 'tickets'), profile, teamIds);
 
     const unsub = onSnapshot(q, (snapshot) => {
       setTickets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
       setLoading(false);
     }, (err) => {
       handleFirestoreError(err, OperationType.GET, 'tickets');
+      setLoading(false);
     });
 
     return unsub;
-  }, [profile]);
+  }, [profile, teamIds, loadingTeam]);
 
   const filteredTickets = tickets.filter(t => filterStatus === 'all' || t.status === filterStatus);
 

@@ -7,6 +7,7 @@ export interface UserProfile {
   role: UserRole;
   managerId?: string;
   active: boolean;
+  mustChangePassword?: boolean;
   commissionRateDefault: number;
   commissionEnabled: boolean;
   createdAt: any;
@@ -30,60 +31,82 @@ export type Priority = 'Baixa' | 'Média' | 'Alta' | 'Urgente';
 
 export interface Company {
   id: string;
-  name: string;
-  fantasyName?: string;
+  razaoSocial: string;
+  nomeFantasia: string;
   cnpj: string;
-  stateRegistration?: string;
-  cityRegistration?: string;
-  address: {
-    street: string;
-    number: string;
-    complement?: string;
-    neighborhood: string;
-    city: string;
-    state: string;
-    zip: string;
-    country: string;
-  };
-  phone: string;
-  whatsapp: string;
-  email: string;
-  website?: string;
-  segment: string;
+  inscricaoEstadual?: string;
+  inscricaoMunicipal?: string;
+  segmentoIndustrial: string;
+  statusComercial: CompanyStatus;
+  temperaturaComercial: Temperature;
+  prioridade: Priority;
+  potencial: number;
   responsibleUserId: string;
   responsibleUserName: string;
-  status: CompanyStatus;
-  temperature: Temperature;
-  priority: Priority;
-  score: number;
-  potential: number;
-  observations?: string;
-  managerNotes?: string;
+  active: boolean;
   
-  // Financial/Credit
-  paymentTerms?: string;
-  creditLimit?: number;
-  preferredCarrier?: string;
-  defaultFreightType?: 'CIF' | 'FOB';
+  // Address
+  cep: string;
+  endereco: string;
+  numero: string;
+  complemento?: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+  pais: string;
+
+  // Contact
+  telefonePrincipal: string;
+  whatsapp: string;
+  emailPrincipal: string;
+  site?: string;
+
+  // Ficha Cadastral / Comercial
+  condicaoPagamento?: string;
+  limiteCredito?: number;
+  transportadoraPreferencial?: string;
+  tipoFretePadrao?: 'CIF' | 'FOB';
+  compradorResponsavel?: string;
+  financeiroResponsavel?: string;
+  tecnicoResponsavel?: string;
+  emailsAdicionais?: string;
+  observacoesGerais?: string;
+  observacoesInternas?: string;
+  alertaGestor?: string;
+
+  // Controle
+  ultimoContato?: any;
+  proximoFollowup?: any;
+  origemCadastro?: string;
+  dataUltimaAtualizacaoCadastral?: any;
   
   createdAt: any;
   updatedAt: any;
-  lastContactAt?: any;
-  nextFollowupAt?: any;
+  score: number;
 }
 
 export interface Branch {
   id: string;
   companyId: string;
-  unitName: string;
+  nomeUnidade: string;
   cnpj: string;
-  stateRegistration?: string;
-  address: string;
-  phone: string;
-  responsibleBuyer: string;
-  consumedProducts: string[];
-  observations?: string;
+  inscricaoEstadual?: string;
+  cep: string;
+  endereco: string;
+  numero: string;
+  complemento?: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+  telefone?: string;
+  whatsapp?: string;
+  compradorResponsavel?: string;
+  emailCompras?: string;
+  produtosConsumidos?: string[];
+  observacoes?: string;
   active: boolean;
+  createdAt: any;
+  updatedAt: any;
 }
 
 export interface Contact {
