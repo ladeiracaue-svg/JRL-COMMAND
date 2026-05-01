@@ -49,10 +49,10 @@ export function calculateCompanyScore(company: Partial<Company>): { score: numbe
   let reasons: string[] = [];
 
   // Positivos
-  if (company.segment) { score += 15; reasons.push('Segmento Aderente (+15)'); }
-  if (company.temperature === 'Urgente' || company.temperature === 'Quente') { score += 15; reasons.push('Temperatura Quente (+15)'); }
-  if (company.status === 'Diagnóstico completo') { score += 20; reasons.push('Diagnóstico Completo (+20)'); }
-  if (company.status === 'Proposta enviada') { score += 15; reasons.push('Proposta Enviada (+15)'); }
+  if (company.segmentoIndustrial) { score += 15; reasons.push('Segmento Aderente (+15)'); }
+  if (company.temperaturaComercial === 'Urgente' || company.temperaturaComercial === 'Quente') { score += 15; reasons.push('Temperatura Quente (+15)'); }
+  if (company.statusComercial === 'Diagnóstico completo') { score += 20; reasons.push('Diagnóstico Completo (+20)'); }
+  if (company.statusComercial === 'Proposta enviada') { score += 15; reasons.push('Proposta Enviada (+15)'); }
   
   // Negativos (Penalidades)
   // Nota: Em uma app real, compararíamos datas. Simularemos aqui.
@@ -64,10 +64,10 @@ export function calculateCompanyScore(company: Partial<Company>): { score: numbe
 }
 
 export function getMission(company: Company): { title: string; action: string } {
-  if (company.status === 'Novo cadastro') {
+  if (company.statusComercial === 'Novo cadastro') {
     return { title: 'Mapeamento de Comprador', action: 'Ligar para identificar quem decide a compra de químicos industriais.' };
   }
-  if (company.status === 'Proposta enviada') {
+  if (company.statusComercial === 'Proposta enviada') {
     return { title: 'Fechamento / Negociação', action: 'Realizar follow-up agressivo. Validar preço vs competência técnica.' };
   }
   return { title: 'Manutenção Preventiva', action: 'Enviar atualização de mercado e manter a marca JRL no radar.' };

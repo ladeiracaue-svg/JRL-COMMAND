@@ -41,6 +41,7 @@ export default function CompaniesView({ profile, onOpenAccount }: CompaniesViewP
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [sellers, setSellers] = useState<{uid: string, name: string}[]>([]);
   
   // Form State
   const [formData, setFormData] = useState({

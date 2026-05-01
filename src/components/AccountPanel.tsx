@@ -18,16 +18,19 @@ import {
   History,
   Target,
   Plus,
-  TrendingUp
+  TrendingUp,
+  Printer
 } from 'lucide-react';
-import { Company, UserProfile, Interaction, Ticket, Priority, Branch, Contact } from '../types';
+import { Company, UserProfile, Interaction, Ticket, Priority, Branch, Contact, Proposal } from '../types';
 import { getStrategy, getMission, calculateCompanyScore } from '../lib/missionEngine';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, onSnapshot, doc, updateDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, onSnapshot, doc, updateDoc, getDocs, limit } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { logAudit } from '../lib/auditService';
+import { getStatusColor } from '../services/proposalService';
+import ProposalPDFModal from './ProposalPDFModal';
 
 function cn(...inputs: any[]) {
     return inputs.filter(Boolean).join(' ');
@@ -40,11 +43,12 @@ interface AccountPanelProps {
 }
 
 export default function AccountPanel({ company, profile, onClose }: AccountPanelProps) {
-  const [activeTab, setActiveTab] = useState<'strategy' | 'actions' | 'tickets' | 'details' | 'history' | 'branches'>('strategy');
+  const [activeTab, setActiveTab] = useState<'strategy' | 'actions' | 'tickets' | 'details' | 'history' | 'branches' | 'proposals'>('strategy');
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [interactionText, setInteractionText] = useState('');
@@ -54,6 +58,8 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
   const [isAddingContact, setIsAddingContact] = useState(false);
   const [isAddingBranch, setIsAddingBranch] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [selectedProposalForPDF, setSelectedProposalForPDF] = useState<Proposal | null>(null);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
 
   // Edit State
   const [editData, setEditData] = useState<Partial<Company>>({});
@@ -66,7 +72,7 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
   // Mission and Strategy
   const strategy = getStrategy(company.segmentoIndustrial);
   const mission = getMission(company);
-  const { score } = calculateCompanyScore(company);
+  const { score, reason } = calculateCompanyScore(company);
 
   useEffect(() => {
     if (profile.role !== 'seller') {
@@ -99,6 +105,18 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
       setTickets(snap.docs.map(d => ({ id: d.id, ...d.data() } as Ticket)));
     });
 
+    // Fetch proposals
+    const qProps = query(
+      collection(db, 'proposals'),
+      where('companyId', '==', company.id),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubProps = onSnapshot(qProps, (snap) => {
+      setProposals(snap.docs.map(d => ({ id: d.id, ...d.data() } as Proposal)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'proposals');
+    });
+
     // Fetch branches
     const unsubBranches = onSnapshot(collection(db, 'companies', company.id, 'branches'), (snap) => {
       setBranches(snap.docs.map(d => ({ id: d.id, ...d.data() } as Branch)));
@@ -112,18 +130,21 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
 
     // Fetch audit logs
     const qLogs = query(
-      collection(db, 'auditLogs'),
+      collection(db, 'audit_logs'),
       where('entityId', '==', company.id),
       orderBy('createdAt', 'desc'),
       limit(20)
     );
     const unsubLogs = onSnapshot(qLogs, (snap) => {
        setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => {
+       handleFirestoreError(error, OperationType.GET, 'audit_logs');
     });
 
     return () => {
       unsubInter();
       unsubTickets();
+      unsubProps();
       unsubBranches();
       unsubContacts();
       unsubLogs();
@@ -230,7 +251,7 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
     try {
       const docRef = doc(db, 'companies', company.id);
       await updateDoc(docRef, { 
-        status: newStatus,
+        statusComercial: newStatus,
         updatedAt: serverTimestamp()
       });
       
@@ -247,8 +268,8 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
         profile.name,
         'company',
         company.id,
-        `Status alterado: ${company.status} -> ${newStatus}`,
-        { status: company.status },
+        `Status alterado: ${company.statusComercial} -> ${newStatus}`,
+        { status: company.statusComercial },
         { status: newStatus }
       );
 
@@ -263,7 +284,7 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
             userId: profile.uid,
             userName: profile.name,
             companyId: company.id,
-            companyName: company.name,
+            companyName: company.razaoSocial,
             saleValue,
             commissionRate: profile.commissionRateDefault || 0,
             commissionAmount,
@@ -305,8 +326,8 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
               <Building2 size={24} className="text-gold" />
            </div>
            <div>
-              <h2 className="font-bold text-lg leading-tight">{company.name}</h2>
-              <p className="text-white/60 text-xs">{company.segment} • {company.address.city}, {company.address.state}</p>
+              <h2 className="font-bold text-lg leading-tight">{company.razaoSocial}</h2>
+              <p className="text-white/60 text-xs">{company.segmentoIndustrial} • {company.cidade}, {company.uf}</p>
            </div>
         </div>
         <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-all">
@@ -319,6 +340,7 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
         {[
           { id: 'strategy', label: 'IA', icon: Target },
           { id: 'details', label: 'Ficha', icon: ShieldCheck },
+          { id: 'proposals', label: 'Propostas', icon: FileText },
           { id: 'branches', label: 'Filiais', icon: Building2 },
           { id: 'actions', label: 'Ações', icon: CheckCircle2 },
           { id: 'tickets', label: 'Gestor', icon: MessageSquare },
@@ -625,6 +647,56 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
           </div>
         )}
 
+        {activeTab === 'proposals' && (
+           <div className="space-y-6 pb-20">
+              <div className="flex items-center justify-between">
+                 <h3 className="font-black text-xl uppercase tracking-tighter text-primary-900">Histórico de Propostas</h3>
+                 <span className="bg-slate-100 text-technical px-3 py-1 rounded-full text-[10px] font-black uppercase">{proposals.length} Registros</span>
+              </div>
+
+              {proposals.length === 0 ? (
+                <div className="py-20 border-2 border-dashed border-gray-200 rounded-3xl flex flex-col items-center justify-center text-center px-8">
+                   <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                      <FileText size={32} className="text-gray-300" />
+                   </div>
+                   <h4 className="font-black text-gray-400 uppercase text-xs tracking-widest">Sem propostas geradas</h4>
+                   <p className="text-[11px] text-technical mt-2">Nenhuma proposta comercial foi emitida para esta conta no JRL Command.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                   {proposals.map(p => (
+                      <div key={p.id} className="p-5 bg-white border border-gray-100 rounded-3xl shadow-sm hover:shadow-md transition-all group">
+                         <div className="flex justify-between items-start mb-4">
+                            <div>
+                               <p className="text-sm font-black text-primary-900">#{p.number}</p>
+                               <p className="text-[10px] font-bold text-technical uppercase">{p.date ? format(p.date.toDate(), 'dd/MMM/yy') : '--'}</p>
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${getStatusColor(p.status)}`}>
+                               {p.status}
+                            </span>
+                         </div>
+                         <div className="flex items-center justify-between">
+                            <div>
+                               <p className="text-[9px] font-black text-technical uppercase tracking-widest mb-1">Valor Total</p>
+                               <p className="text-lg font-black text-slate-800 tracking-tighter">R$ {p.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                            </div>
+                            <button 
+                               onClick={() => {
+                                 setSelectedProposalForPDF(p);
+                                 setPdfModalOpen(true);
+                               }}
+                               className="p-3 bg-primary-50 text-primary-900 rounded-2xl hover:bg-primary-900 hover:text-gold transition-all"
+                            >
+                               <Printer size={18} />
+                            </button>
+                         </div>
+                      </div>
+                   ))}
+                </div>
+              )}
+           </div>
+        )}
+
         {activeTab === 'branches' && (
            <div className="space-y-6 pb-20">
               <div className="flex items-center justify-between">
@@ -712,7 +784,7 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
                     try {
                       await addDoc(collection(db, 'tickets'), {
                         companyId: company.id,
-                        companyName: company.name,
+                        companyName: company.razaoSocial,
                         managerId: profile.uid,
                         managerName: profile.name,
                         sellerId: company.responsibleUserId,
@@ -826,7 +898,7 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
               onClick={() => setShowStatusMenu(!showStatusMenu)}
               className="jrl-btn-primary w-full py-4 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2"
             >
-              Status: {company.status}
+              Status: {company.statusComercial}
             </button>
             
             <AnimatePresence>
@@ -845,7 +917,7 @@ export default function AccountPanel({ company, profile, onClose }: AccountPanel
                       key={opt}
                       onClick={() => updateStatus(opt)}
                       className={`w-full px-4 py-3 text-left text-xs hover:bg-gray-50 border-b border-gray-50 last:border-0 font-medium transition-colors ${
-                        company.status === opt ? 'text-primary-900 bg-primary-50 font-bold' : 'text-slate-600'
+                        company.statusComercial === opt ? 'text-primary-900 bg-primary-50 font-bold' : 'text-slate-600'
                       }`}
                     >
                       {opt}

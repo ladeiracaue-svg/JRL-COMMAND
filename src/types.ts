@@ -129,40 +129,67 @@ export interface Interaction {
   createdAt: any;
 }
 
+export type ProposalStatus = 
+  | 'Rascunho' 
+  | 'Em elaboração' 
+  | 'Enviada' 
+  | 'Em negociação' 
+  | 'Fechada ganha' 
+  | 'Fechada perdida' 
+  | 'Cancelada';
+
 export interface ProposalItem {
   id: string;
-  product: string;
+  proposalId: string;
+  productName: string;
+  productFamily?: string;
   specification?: string;
   unitPrice: number;
   currency: 'BRL' | 'USD';
-  quantity: number;
+  volume: number;
   unit: string; // kg, L, ton, etc
-  packaging: string;
-  qtyPerPackage: number;
-  taxes: {
-    icms: number;
-    pisCofins: number;
-    ipi: number;
-    other: number;
-  };
+  packageType: string;
+  packageQty: number;
+  taxesDescription?: string;
+  icms?: number;
+  pis?: number;
+  cofins?: number;
+  ipi?: number;
+  otherTaxes?: number;
+  freightType: 'CIF' | 'FOB' | 'Retirada';
+  freightValue?: number;
+  deliveryLocation?: string;
+  deliveryTime?: string;
+  paymentTerms?: string;
+  itemObservations?: string;
+  itemTotal: number;
 }
 
 export interface Proposal {
   id: string;
+  number: string; // JRL-YYYY-XXXX
   companyId: string;
+  companyName: string;
   branchId?: string;
+  contactId?: string;
   userId: string;
   userName: string;
   date: any;
   validUntil: any;
-  status: 'draft' | 'sent' | 'won' | 'lost' | 'canceled';
+  status: ProposalStatus;
+  currency: 'BRL' | 'USD';
+  totalProducts: number;
+  totalTaxes: number;
+  totalFreight: number;
   totalValue: number;
-  items: ProposalItem[];
   paymentTerms: string;
-  freightType: 'CIF' | 'FOB';
-  deliveryLocation: string;
   deliveryTime: string;
   observations?: string;
+  internalObservations?: string;
+  lossReason?: string;
+  wonAt?: any;
+  lostAt?: any;
+  sentAt?: any;
   createdAt: any;
   updatedAt: any;
 }

@@ -114,8 +114,14 @@ service cloud.firestore {
 
     // Audit Logs
     match /audit_logs/{id} {
-      allow read: if isAdmin();
       allow create: if isSignedIn() && isUserActive();
+      allow read: if isSignedIn() && isUserActive();
+    }
+
+    // Segments
+    match /segments/{id} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isUserActive();
     }
   }
 }

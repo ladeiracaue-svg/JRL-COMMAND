@@ -82,13 +82,34 @@
       "description": "Sales proposal",
       "type": "object",
       "properties": {
+        "number": { "type": "string" },
         "companyId": { "type": "string" },
+        "companyName": { "type": "string" },
+        "branchId": { "type": "string" },
         "userId": { "type": "string" },
+        "userName": { "type": "string" },
         "status": { "type": "string" },
         "totalValue": { "type": "number" },
-        "items": { "type": "array" },
+        "totalProducts": { "type": "number" },
+        "totalTaxes": { "type": "number" },
+        "totalFreight": { "type": "number" },
+        "currency": { "type": "string" },
         "validUntil": { "type": "string", "format": "date-time" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ProposalItem": {
+      "title": "Proposal Item",
+      "description": "Line item of a proposal",
+      "type": "object",
+      "properties": {
+        "proposalId": { "type": "string" },
+        "productName": { "type": "string" },
+        "unitPrice": { "type": "number" },
+        "volume": { "type": "number" },
+        "unit": { "type": "string" },
+        "itemTotal": { "type": "number" }
       }
     },
     "Ticket": {
@@ -141,6 +162,7 @@
     "/companies/{companyId}/contacts/{contactId}": { "schema": "Contact", "description": "Company contacts" },
     "/companies/{companyId}/interactions/{interactionId}": { "schema": "Interaction", "description": "Communication history" },
     "/proposals/{proposalId}": { "schema": "Proposal", "description": "Sales proposals" },
+    "/proposals/{proposalId}/items/{itemId}": { "schema": "ProposalItem", "description": "Line items of a proposal" },
     "/tickets/{ticketId}": { "schema": "Ticket", "description": "Internal tickets" },
     "/notifications/{notificationId}": { "schema": "Notification", "description": "User notifications" },
     "/commissions/{commissionId}": { "schema": "Commission", "description": "Sales commissions" }
