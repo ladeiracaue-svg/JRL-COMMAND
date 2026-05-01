@@ -3,14 +3,14 @@ import { db, auth } from './firebase';
 import { Company, UserProfile } from '../types';
 
 const SAMPLE_COMPANIES = [
-  { name: 'Cadam S.A', segment: 'Distribuição / Formulação Química', status: 'Novo cadastro', temperature: 'Morno', potential: 50000, color: 'blue' },
+  { name: 'Cadam S.A', segment: 'Distribuição / Formulação Química', status: 'Primeiro contato', temperature: 'Morno', potential: 50000, color: 'blue' },
   { name: 'CHT Brasil', segment: 'Distribuição / Formulação Química', status: 'Pesquisar dados', temperature: 'Frio', potential: 30000, color: 'blue' },
-  { name: 'Fedrigoni', segment: 'Papel, Celulose & Embalagens', status: 'Contato feito', temperature: 'Quente', potential: 120000, color: 'green' },
-  { name: 'Ester', segment: 'Usinas Sucroenergéticas', status: 'Em qualificação', temperature: 'Quente', potential: 200000, color: 'gold' },
-  { name: 'AMERICA LEATHER IMP. E EXP. LTDA', segment: 'Curtumes & Couro', status: 'Proposta enviada', temperature: 'Fogo', potential: 80000, color: 'red' },
+  { name: 'Fedrigoni', segment: 'Papel, Celulose & Embalagens', status: 'Diagnóstico em andamento', temperature: 'Quente', potential: 120000, color: 'green' },
+  { name: 'Ester', segment: 'Usinas Sucroenergéticas', status: 'Negociação', temperature: 'Quente', potential: 200000, color: 'gold' },
+  { name: 'AMERICA LEATHER IMP. E EXP. LTDA', segment: 'Curtumes & Couro', status: 'Proposta enviada', temperature: 'Urgente', potential: 80000, color: 'red' },
   { name: 'Cyan Tintas', segment: 'Tintas & Coatings', status: 'Novo cadastro', temperature: 'Morno', potential: 45000, color: 'purple' },
-  { name: 'POLY URETHANE IND E COMERCIO LTDA', segment: 'Polímeros, PU & Borrachas', status: 'Aguardando retorno', temperature: 'Morno', potential: 60000, color: 'indigo' },
-  { name: 'De Sangosse', segment: 'Agrícola & Fertilizantes', status: 'Cliente ativo', temperature: 'Quente', potential: 300000, color: 'emerald' },
+  { name: 'POLY URETHANE IND E COMERCIO LTDA', segment: 'Polímeros, PU & Borrachas', status: 'Diagnóstico completo', temperature: 'Morno', potential: 60000, color: 'indigo' },
+  { name: 'De Sangosse', segment: 'Agrícola & Fertilizantes', status: 'Fechado ganho', temperature: 'Quente', potential: 300000, color: 'emerald' },
 ];
 
 export async function seedInitialData(userId: string, userName: string) {

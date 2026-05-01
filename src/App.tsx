@@ -1,11 +1,16 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import CompaniesView from './components/CompaniesView';
 import PipelineView from './components/PipelineView';
+import ProposalsView from './components/ProposalsView';
+import TicketsView from './components/TicketsView';
+import TeamView from './components/TeamView';
 import AccountPanel from './components/AccountPanel';
-import { seedInitialData } from './lib/seed';
+import AuditLogView from './components/AuditLogView';
+import DashboardView from './components/DashboardView';
+import ReportsView from './components/ReportsView';
 import { Company, UserProfile } from './types';
 import { 
   LayoutDashboard, 
@@ -37,40 +42,27 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // --- Auth Components ---
-function Login() {
+function Login({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      if (isRegistering) {
-        const { createUserWithEmailAndPassword } = await import('firebase/auth');
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        
-        if (email === 'diretoria@jrlchemicals.com.br') {
-          const { setupAdminProfile } = await import('./lib/seed');
-          await setupAdminProfile(userCredential.user.uid, email);
-        }
-      } else {
-        const { signInWithEmailAndPassword } = await import('firebase/auth');
-        await signInWithEmailAndPassword(auth, email, password);
-      }
+      const { signInWithEmailAndPassword } = await import('firebase/auth');
+      await signInWithEmailAndPassword(auth, email, password);
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/operation-not-allowed') {
-        setError('O login por E-mail/Senha não está ativado no Firebase Console. Por favor, ative-o ou use o Google Login abaixo.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setError('Este e-mail já está cadastrado.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('A senha deve ter pelo menos 6 caracteres.');
+        setError('O login por E-mail/Senha não está ativado no Firebase Console.');
+      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-email') {
+        setError('E-mail ou senha incorretos.');
       } else {
-        setError('Credenciais inválidas ou erro de permissão.');
+        setError('Falha na autenticação. Verifique sua conexão.');
       }
     } finally {
       setLoading(false);
@@ -85,6 +77,15 @@ function Login() {
       const provider = new GoogleAuthProvider();
       const userCredential = await signInWithPopup(auth, provider);
       
+      const docRef = doc(db, 'users', userCredential.user.uid);
+      const d = await getDoc(docRef);
+      
+      if (!d.exists() && userCredential.user.email !== 'diretoria@jrlchemicals.com.br' && userCredential.user.email !== 'ladeiracaue@gmail.com') {
+        await auth.signOut();
+        onUnauthorized();
+        return;
+      }
+
       if (userCredential.user.email === 'diretoria@jrlchemicals.com.br' || userCredential.user.email === 'ladeiracaue@gmail.com') {
         const { setupAdminProfile } = await import('./lib/seed');
         await setupAdminProfile(userCredential.user.uid, userCredential.user.email!);
@@ -102,78 +103,102 @@ function Login() {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8"
+        className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-10"
       >
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <div className="bg-primary-900 p-3 rounded-xl">
-              <Layers className="text-gold w-8 h-8" />
+          <div className="flex justify-center mb-6">
+            <div className="bg-primary-900 p-4 rounded-2xl shadow-lg ring-4 ring-gold/20">
+              <Layers className="text-gold w-10 h-10" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-primary-900">JRL Sales Command System</h1>
-          <p className="text-technical text-sm mt-1">
-            {isRegistering ? 'Crie seu acesso de administrador' : 'Bem-vindo ao centro de comando JRL Chemicals'}
+          <h1 className="text-3xl font-black text-primary-900 tracking-tighter uppercase mb-2">JRL COMMAND</h1>
+          <p className="text-technical text-xs font-bold uppercase tracking-widest bg-gray-50 py-1.5 px-4 rounded-full inline-block">
+             Gestão de Elite JRL Chemicals
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">E-mail</label>
+          <div className="space-y-1">
+            <label className="block text-[10px] font-black text-technical uppercase tracking-wider ml-1">E-mail Corporativo</label>
             <input 
               type="email" 
               required
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-800 outline-none transition-all"
-              placeholder="seu@email.com"
+              className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:ring-2 focus:ring-primary-900 focus:border-transparent outline-none transition-all font-bold text-sm"
+              placeholder="vendedor@jrlchemicals.com.br"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Senha</label>
+          <div className="space-y-1">
+            <label className="block text-[10px] font-black text-technical uppercase tracking-wider ml-1">Senha de Acesso</label>
             <input 
               type="password" 
               required
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-800 outline-none transition-all"
+              className="w-full px-5 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:ring-2 focus:ring-primary-900 focus:border-transparent outline-none transition-all font-bold text-sm"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          {error && <p className="text-red-500 text-xs font-medium">{error}</p>}
+          {error && <p className="bg-red-50 text-red-600 p-3 rounded-xl text-[10px] font-black uppercase text-center border border-red-100">{error}</p>}
           <button 
             disabled={loading}
-            className="w-full jrl-btn-primary py-3 mt-4"
+            className="w-full jrl-btn-primary py-4 mt-6 text-sm flex items-center justify-center gap-3 active:scale-95 transition-transform"
           >
-            {loading ? 'Processando...' : isRegistering ? 'Criar Conta Master' : 'Acessar Sistema'}
+            {loading ? 'Validando Credenciais...' : 'Entrar no Comando'}
+            <ChevronRight size={18} />
           </button>
         </form>
 
-        <div className="mt-4">
+        <div className="mt-8">
           <div className="relative flex items-center py-2">
-            <div className="flex-grow border-t border-gray-200"></div>
-            <span className="flex-shrink mx-4 text-gray-400 text-xs">Ou</span>
-            <div className="flex-grow border-t border-gray-200"></div>
+            <div className="flex-grow border-t border-gray-100"></div>
+            <span className="flex-shrink mx-4 text-technical font-black text-[10px] uppercase tracking-widest">Painel de Acesso</span>
+            <div className="flex-grow border-t border-gray-100"></div>
           </div>
           
           <button 
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="w-full jrl-btn-secondary py-3 mt-2 flex items-center justify-center gap-2 border-gray-200"
+            className="w-full bg-white border-2 border-gray-100 hover:border-primary-900 hover:text-primary-900 py-4 mt-6 flex items-center justify-center gap-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all"
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-            Entrar com Google
+            Acesso via Google Workspace
           </button>
         </div>
         
-        <div className="mt-6 text-center">
-          <button 
-            onClick={() => setIsRegistering(!isRegistering)}
-            className="text-sm text-primary-800 hover:underline font-medium"
-          >
-            {isRegistering ? 'Já tem uma conta? Entre aqui' : 'Primeiro acesso? Registre-se como Admin'}
-          </button>
-          <p className="text-[10px] text-technical mt-8">JRL Chemicals | Inteligência, Relacionamento e Resultado.</p>
+        <div className="mt-10 text-center opacity-40">
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-technical">
+            JRL Chemicals v4.0 • Enterprise Security Layer
+          </p>
         </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function Unauthorized({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-primary-900 px-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-10 text-center"
+      >
+        <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+          <AlertTriangle size={40} className="text-red-500" />
+        </div>
+        <h2 className="text-2xl font-black text-primary-900 uppercase tracking-tighter mb-4">Acesso não autorizado</h2>
+        <p className="text-technical text-sm font-medium mb-8">
+          Sua conta não possui um perfil ativo no JRL COMMAND. 
+          Entre em contato com a diretoria para solicitar seu convite e permissões de acesso.
+        </p>
+        <button 
+          onClick={onBack}
+          className="jrl-btn-primary w-full py-4 text-xs font-black uppercase tracking-widest"
+        >
+          Voltar para Login
+        </button>
       </motion.div>
     </div>
   );
@@ -207,6 +232,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
@@ -218,15 +244,28 @@ export default function App() {
         const d = await getDoc(docRef);
         if (d.exists()) {
           const prof = d.data() as UserProfile;
-          setProfile(prof);
-        } else if (u.email === 'diretoria@jrlchemicals.com.br') {
-          // Auto-setup for the director if requested in prompt
+          if (!prof.active && prof.role !== 'admin') {
+            setUnauthorized(true);
+            setUser(null);
+            auth.signOut();
+          } else {
+            setProfile(prof);
+            setUser(u);
+            setUnauthorized(false);
+          }
+        } else if (u.email === 'diretoria@jrlchemicals.com.br' || u.email === 'ladeiracaue@gmail.com') {
           const { setupAdminProfile } = await import('./lib/seed');
           await setupAdminProfile(u.uid, u.email!);
           const d2 = await getDoc(docRef);
           setProfile(d2.data() as UserProfile);
+          setUser(u);
+          setUnauthorized(false);
+        } else {
+          // No profile found and not a bootstrap admin
+          setUnauthorized(true);
+          setUser(null);
+          auth.signOut();
         }
-        setUser(u);
       } else {
         setUser(null);
         setProfile(null);
@@ -238,6 +277,7 @@ export default function App() {
 
   const handleSeed = async () => {
     if (user && profile) {
+      const { seedInitialData } = await import('./lib/seed');
       await seedInitialData(user.uid, profile.name);
       alert('Dados iniciais carregados!');
     }
@@ -245,7 +285,9 @@ export default function App() {
 
   if (loading) return <div className="h-screen w-screen flex items-center justify-center bg-white"><Clock className="animate-spin text-primary-900" /></div>;
 
-  if (!user) return <Login />;
+  if (unauthorized) return <Unauthorized onBack={() => setUnauthorized(false)} />;
+
+  if (!user) return <Login onUnauthorized={() => setUnauthorized(true)} />;
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -253,6 +295,7 @@ export default function App() {
     { id: 'pipeline', label: 'Pipeline de Vendas', icon: Briefcase },
     { id: 'proposals', label: 'Propostas', icon: TrendingUp },
     { id: 'tickets', label: 'Tickets & Orientações', icon: Ticket, badge: 3 },
+    { id: 'audit', label: 'Audit Log', icon: Clock, hidden: profile?.role !== 'admin' },
     { id: 'reports', label: 'Relatórios', icon: BarChart3 },
     { id: 'team', label: 'Gestão de Equipe', icon: Users, hidden: profile?.role !== 'admin' && profile?.role !== 'manager' },
     { id: 'settings', label: 'Configurações', icon: Settings },
@@ -357,6 +400,10 @@ export default function App() {
               {activeTab === 'companies' && <CompaniesView profile={profile!} onOpenAccount={setSelectedCompany} />}
               {activeTab === 'pipeline' && <PipelineView profile={profile!} onOpenAccount={setSelectedCompany} />}
               {activeTab === 'proposals' && <ProposalsView profile={profile!} />}
+              {activeTab === 'tickets' && <TicketsView profile={profile!} />}
+              {activeTab === 'audit' && <AuditLogView />}
+              {activeTab === 'team' && <TeamView profile={profile!} />}
+              {activeTab === 'reports' && <ReportsView profile={profile!} />}
             </Suspense>
           </div>
         </div>
@@ -400,88 +447,4 @@ const chartData = [
   { name: 'Jun', total: 2390 },
 ];
 
-function DashboardView({ profile }: { profile: UserProfile }) {
-  const kpis = [
-    { label: 'Contas Ativas', value: '142', trend: '+12%', icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Propostas Abertas', value: 'R$ 2.4M', trend: '+5.4%', icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'Follow-ups Hoje', value: '18', trend: 'Prioridade', icon: Clock, color: 'text-gold', bg: 'bg-orange-50' },
-    { label: 'Atrasados', value: '4', trend: 'Atenção', icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
-  ];
-
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">Bom dia, {profile.name}</h2>
-          <p className="text-technical text-sm">Aqui está o resumo da sua operação comercial hoje.</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {kpis.map((kpi, i) => (
-          <motion.div 
-            key={i}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="jrl-card p-6 flex items-start justify-between"
-          >
-            <div>
-              <p className="text-technical text-[10px] font-bold uppercase tracking-wider mb-1">{kpi.label}</p>
-              <h3 className="text-2xl font-bold text-slate-900">{kpi.value}</h3>
-              <p className={cn("text-xs mt-2 font-medium", kpi.color)}>{kpi.trend}</p>
-            </div>
-            <div className={cn("p-3 rounded-xl", kpi.bg)}>
-              <kpi.icon size={24} className={kpi.color} />
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 jrl-card p-6 min-h-[400px]">
-           <div className="flex items-center justify-between mb-8">
-              <h3 className="font-bold text-lg">Evolução de Vendas</h3>
-           </div>
-           <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0E2A47" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#0E2A47" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6C7A89' }} />
-                  <YAxis hide />
-                  <ReTooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                  <Area type="monotone" dataKey="total" stroke="#0E2A47" fillOpacity={1} fill="url(#colorTotal)" strokeWidth={3} />
-                </AreaChart>
-              </ResponsiveContainer>
-           </div>
-        </div>
-        
-        <div className="jrl-card p-6">
-           <h3 className="font-bold text-lg mb-6">Alerta do Gestor</h3>
-           <div className="space-y-4">
-              {[1, 2].map((_, i) => (
-                <div key={i} className="bg-primary-900 text-white p-4 rounded-2xl relative overflow-hidden">
-                   <AlertTriangle className="absolute -right-2 -bottom-2 text-white/10 w-16 h-16" />
-                   <p className="text-[10px] font-bold text-gold uppercase tracking-widest mb-1">Urgente</p>
-                   <h5 className="font-bold text-sm mb-2">Entrar via PAC na Cadam</h5>
-                   <p className="text-xs text-white/70">O comprador está aguardando orçamento de PAC para fechar o mês.</p>
-                </div>
-              ))}
-           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProposalsView({ profile }: { profile: UserProfile }) {
-  return <div className="h-96 flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl font-bold">Módulo de Propostas JRL Chemicals</div>;
-}
+// --- Views are imported above ---

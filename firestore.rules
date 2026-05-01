@@ -1,7 +1,6 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
     // Default deny
     match /{document=**} {
       allow read, write: if false;
@@ -16,90 +15,101 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function isRole(role) {
-      return isSignedIn() && getUserData().role == role;
-    }
-
     function isAdmin() {
-      return isRole('admin');
+      return isSignedIn() && getUserData().role == 'admin';
     }
 
     function isManager() {
-      return isRole('manager');
+      return isSignedIn() && getUserData().role == 'manager';
     }
 
     function isSeller() {
-      return isRole('seller');
+      return isSignedIn() && getUserData().role == 'seller';
     }
 
-    function canAccessData(ownerId) {
-      return isAdmin() || isManager() || (isSeller() && ownerId == request.auth.uid);
+    function isUserActive() {
+      return getUserData().active == true;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // --- Users ---
+    // Profiles
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSignedIn() && request.auth.uid == userId;
-      allow delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
-    // --- Companies ---
+    // Companies
     match /companies/{companyId} {
-      allow read: if canAccessData(resource.data.responsibleUserId);
-      allow create: if isSignedIn();
-      allow update: if canAccessData(resource.data.responsibleUserId);
+      allow read: if isSignedIn() && isUserActive() && (
+        isAdmin() || 
+        (isManager() && (resource.data.managerId == request.auth.uid || resource.data.responsibleUserId == request.auth.uid)) ||
+        (resource.data.responsibleUserId == request.auth.uid)
+      );
+      allow create: if isSignedIn() && isUserActive();
+      allow update: if isSignedIn() && isUserActive() && (
+        isAdmin() || 
+        resource.data.responsibleUserId == request.auth.uid ||
+        (isManager() && resource.data.managerId == request.auth.uid)
+      );
       allow delete: if isAdmin();
 
-      // Interactions
-      match /interactions/{interactionId} {
-        allow read: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
-        allow write: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
+      // Subcollections
+      match /interactions/{id} {
+        allow read, write: if isSignedIn() && isUserActive();
       }
-
-      // Branches
-      match /branches/{branchId} {
-        allow read: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
-        allow write: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
+      match /branches/{id} {
+        allow read, write: if isSignedIn() && isUserActive();
       }
-
-      // Contacts
-      match /contacts/{contactId} {
-        allow read: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
-        allow write: if canAccessData(get(/databases/$(database)/documents/companies/$(companyId)).data.responsibleUserId);
+      match /contacts/{id} {
+        allow read, write: if isSignedIn() && isUserActive();
       }
     }
 
-    // --- Proposals ---
+    // Proposals
     match /proposals/{proposalId} {
-      allow read: if canAccessData(resource.data.userId);
-      allow create: if isSignedIn();
-      allow update: if canAccessData(resource.data.userId);
+      allow read: if isSignedIn() && isUserActive() && (
+        isAdmin() || 
+        resource.data.userId == request.auth.uid ||
+        (isManager() && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.managerId == request.auth.uid)
+      );
+      allow create: if isSignedIn() && isUserActive();
+      allow update: if isSignedIn() && isUserActive() && (
+        isAdmin() || 
+        resource.data.userId == request.auth.uid ||
+        (isManager() && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.managerId == request.auth.uid)
+      );
       allow delete: if isAdmin();
     }
 
-    // --- Tickets ---
+    // Tickets
     match /tickets/{ticketId} {
-      allow read: if canAccessData(resource.data.sellerId) || request.auth.uid == resource.data.managerId;
-      allow create: if isAdmin() || isManager();
-      allow update: if canAccessData(resource.data.sellerId) || request.auth.uid == resource.data.managerId;
+      allow read: if isSignedIn() && isUserActive() && (
+        isAdmin() || 
+        resource.data.sellerId == request.auth.uid ||
+        resource.data.managerId == request.auth.uid
+      );
+      allow create: if isSignedIn() && isUserActive() && (isAdmin() || isManager());
+      allow update: if isSignedIn() && isUserActive() && (
+        isAdmin() || 
+        resource.data.managerId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid
+      );
     }
 
-    // --- Commissions ---
-    match /commissions/{commissionId} {
-      allow read: if canAccessData(resource.data.userId);
-      allow create: if isAdmin() || isManager();
-      allow update: if isAdmin();
+    // Commissions
+    match /commissions/{id} {
+      allow read: if isSignedIn() && isUserActive() && (
+        isAdmin() || 
+        resource.data.userId == request.auth.uid ||
+        (isManager() && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.managerId == request.auth.uid)
+      );
+      allow create: if isSignedIn() && isUserActive();
+      allow write: if isAdmin();
     }
 
-    // --- Notifications ---
-    match /notifications/{notificationId} {
-      allow read, update: if request.auth.uid == resource.data.userId;
-      allow create: if isSignedIn();
+    // Audit Logs
+    match /audit_logs/{id} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && isUserActive();
     }
   }
 }

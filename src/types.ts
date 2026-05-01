@@ -7,29 +7,34 @@ export interface UserProfile {
   role: UserRole;
   managerId?: string;
   active: boolean;
-  mustChangePassword?: boolean;
   commissionRateDefault: number;
+  commissionEnabled: boolean;
   createdAt: any;
 }
 
-export type CompanyStatus = 'Novo cadastro' | 'Pesquisar dados' | 'Primeiro contato' | 'Diagnóstico em andamento' | 'Diagnóstico completo' | 'Proposta em elaboração' | 'Proposta enviada' | 'Negociação' | 'Fechado ganho' | 'Fechado perdido' | 'Sem aderência';
-export type Temperature = 'Gelo' | 'Frio' | 'Morno' | 'Quente' | 'Fogo';
+export type CompanyStatus = 
+  | 'Novo cadastro' 
+  | 'Pesquisar dados' 
+  | 'Primeiro contato' 
+  | 'Diagnóstico em andamento' 
+  | 'Diagnóstico completo' 
+  | 'Proposta em elaboração' 
+  | 'Proposta enviada' 
+  | 'Negociação' 
+  | 'Fechado ganho' 
+  | 'Fechado perdido' 
+  | 'Sem aderência';
+
+export type Temperature = 'Frio' | 'Morno' | 'Quente' | 'Urgente';
 export type Priority = 'Baixa' | 'Média' | 'Alta' | 'Urgente';
 
 export interface Company {
   id: string;
   name: string;
-  fantasyName: string;
+  fantasyName?: string;
   cnpj: string;
-  ie?: string;
-  im?: string;
-  segment: string;
-  status: CompanyStatus;
-  temperature: Temperature;
-  priority: Priority;
-  potential: number;
-  responsibleUserId: string;
-  responsibleUserName?: string;
+  stateRegistration?: string;
+  cityRegistration?: string;
   address: {
     street: string;
     number: string;
@@ -38,36 +43,57 @@ export interface Company {
     city: string;
     state: string;
     zip: string;
+    country: string;
   };
   phone: string;
-  whatsapp?: string;
+  whatsapp: string;
   email: string;
-  site?: string;
-  lastContactAt?: any;
-  nextFollowupAt?: any;
-  managerNotes?: string;
+  website?: string;
+  segment: string;
+  responsibleUserId: string;
+  responsibleUserName: string;
+  status: CompanyStatus;
+  temperature: Temperature;
+  priority: Priority;
   score: number;
+  potential: number;
+  observations?: string;
+  managerNotes?: string;
+  
+  // Financial/Credit
+  paymentTerms?: string;
+  creditLimit?: number;
+  preferredCarrier?: string;
+  defaultFreightType?: 'CIF' | 'FOB';
+  
   createdAt: any;
   updatedAt: any;
+  lastContactAt?: any;
+  nextFollowupAt?: any;
 }
 
 export interface Branch {
   id: string;
   companyId: string;
-  name: string;
+  unitName: string;
   cnpj: string;
-  address: any;
-  createdAt: any;
+  stateRegistration?: string;
+  address: string;
+  phone: string;
+  responsibleBuyer: string;
+  consumedProducts: string[];
+  observations?: string;
+  active: boolean;
 }
 
 export interface Contact {
   id: string;
   companyId: string;
   name: string;
-  position: string;
+  role: 'Purchasing' | 'Finance' | 'Technical' | 'Owner' | 'Other';
   email: string;
   phone: string;
-  whatsapp?: string;
+  isPrimary: boolean;
 }
 
 export interface Interaction {
@@ -75,24 +101,27 @@ export interface Interaction {
   companyId: string;
   userId: string;
   userName: string;
-  type: 'call' | 'whatsapp' | 'email' | 'proposal' | 'meeting' | 'note' | 'status_change';
+  type: 'call' | 'whatsapp' | 'email' | 'proposal' | 'meeting' | 'note' | 'status_change' | 'mission_completed';
   description: string;
-  nextStep?: string;
   createdAt: any;
 }
 
 export interface ProposalItem {
+  id: string;
   product: string;
-  specification: string;
-  price: number;
-  currency: string;
-  icms: number;
-  pis: number;
-  cofins: number;
-  ipi: number;
-  volume: number;
-  unit: string;
+  specification?: string;
+  unitPrice: number;
+  currency: 'BRL' | 'USD';
+  quantity: number;
+  unit: string; // kg, L, ton, etc
   packaging: string;
+  qtyPerPackage: number;
+  taxes: {
+    icms: number;
+    pisCofins: number;
+    ipi: number;
+    other: number;
+  };
 }
 
 export interface Proposal {
@@ -101,15 +130,18 @@ export interface Proposal {
   branchId?: string;
   userId: string;
   userName: string;
-  status: 'draft' | 'sent' | 'negotiation' | 'won' | 'lost' | 'cancelled';
-  items: ProposalItem[];
-  totalValue: number;
-  freight: 'CIF' | 'FOB';
-  deliveryPlace: string;
-  deliveryTime: string;
-  paymentCondition: string;
+  date: any;
   validUntil: any;
+  status: 'draft' | 'sent' | 'won' | 'lost' | 'canceled';
+  totalValue: number;
+  items: ProposalItem[];
+  paymentTerms: string;
+  freightType: 'CIF' | 'FOB';
+  deliveryLocation: string;
+  deliveryTime: string;
+  observations?: string;
   createdAt: any;
+  updatedAt: any;
 }
 
 export interface Ticket {
@@ -123,7 +155,7 @@ export interface Ticket {
   description: string;
   priority: Priority;
   status: 'novo' | 'em_andamento' | 'respondido' | 'concluido' | 'aprovado' | 'reaberto';
-  dueDate: any;
+  dueDate?: any;
   createdAt: any;
   updatedAt: any;
 }
@@ -131,19 +163,27 @@ export interface Ticket {
 export interface Commission {
   id: string;
   proposalId: string;
+  companyId: string;
+  companyName: string;
   userId: string;
-  amount: number;
-  status: 'pending' | 'approved' | 'paid';
+  userName: string;
+  saleValue: number;
+  commissionRate: number;
+  commissionAmount: number;
+  status: 'pending' | 'approved' | 'paid' | 'canceled';
+  approvedBy?: string;
+  paidAt?: any;
   createdAt: any;
 }
 
-export interface Notification {
+export interface AuditLog {
   id: string;
   userId: string;
-  type: 'ticket' | 'proposal' | 'followup' | 'system';
-  title: string;
-  message: string;
-  read: boolean;
-  relatedId?: string;
+  userName: string;
+  entityType: 'company' | 'proposal' | 'branch' | 'user';
+  entityId: string;
+  action: string;
+  oldValue?: any;
+  newValue?: any;
   createdAt: any;
 }

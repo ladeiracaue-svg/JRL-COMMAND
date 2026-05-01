@@ -1,4 +1,4 @@
-import { Company, Priority, Temperature } from '../types';
+import { Company, Priority, Temperature, CompanyStatus } from '../types';
 
 export interface Strategy {
   products: string[];
@@ -9,44 +9,34 @@ export interface Strategy {
 }
 
 export const SEGMENT_STRATEGIES: { [key: string]: Strategy } = {
+  'Distribuição / Formulação Química': {
+    products: ['HCl', 'Soda 50%', 'PAC', 'Hipoclorito', 'SLES', 'MEG/DEG/PG'],
+    pitch: "Muitos formuladores sofrem com a cotação spot que oscila semanalmente. A JRL Chemicals trabalha com visão de lote antecipado para garantir sua margem.",
+    whatsapp: "Olá! Sou da JRL. Temos lotes de Soda e Glicóis chegando. Gostaria de cotar para sua produção de higiene?",
+    nextSteps: ['Identificar segunda fonte', 'Mapear ruptura', 'Oferecer alternativa logística'],
+    objections: { 'Preço tá alto': 'Em commodities o preço é volátil, mas nossa entrega é garantida. Quer comparar com seu lote de segurança?' }
+  },
   'Usinas Sucroenergéticas': {
-    products: ['Ácido Sulfúrico', 'Soda 50%', 'Hipoclorito', 'PAC', 'Micronutrientes', 'MAP', 'MKP'],
-    pitch: "Estou falando com usinas da região porque o mercado de químicos para tratamento de caldo e águas está sofrendo com disponibilidade. Meu foco na JRL é garantir que o supply de vocês não pare por falta de insumos críticos.",
-    whatsapp: "Olá, tudo bem? Sou da JRL Chemicals. Estamos apoiando usinas na gestão de supply de Ácido Sulfúrico e Soda, especialmente com foco em garantir prazo e disponibilidade nesta safra. Gostaria de entender se hoje existe algum insumo com pressão na operação de vocês.",
-    nextSteps: ['Validar comprador de químicos', 'Mapear volume mensal de Ácido Sulfúrico', 'Solicitar especificação de Soda'],
-    objections: {
-      'Já tenho fornecedor': 'Perfeito. A maioria das usinas já tem contratos. Nosso papel entra como segunda fonte estratégica para cobrir gaps de entrega dos grandes players.',
-      'Manda lista': 'Posso enviar. No setor de usinas, focamos muito em Ácidos e Bases. Qual dessas famílias hoje é mais crítica para vocês?'
-    }
+    products: ['Ácido Sulfúrico', 'Soda 50%', 'Hipoclorito', 'PAC', 'MAP', 'MKP'],
+    pitch: "O foco na safra é disponibilidade. Na JRL, garantimos que o supply de químicos de caldo e águas não pare.",
+    whatsapp: "Olá! A JRL Chemicals está apoiando usinas na gestão de Ácido Sulfúrico para esta safra. Como está seu estoque?",
+    nextSteps: ['Explorar risco de safra', 'Mapear produto crítico', 'Trabalhar previsibilidade'],
+    objections: { 'Já tenho contrato': 'Perfeito. Atuamos como backup estratégico para quando o fornecedor principal corta volume.' }
   },
   'Curtumes & Couro': {
-    products: ['Ácido Fórmico', 'Ácido Sulfúrico', 'Ácido Acético', 'PAC', 'Sulfato de Sódio', 'Bicarbonato de Sódio', 'Butilglicol', 'Resinas PU'],
-    pitch: "Muitos curtumes estão buscando alternativas para Ácido Fórmico e Acético devido às variações de importação. Na JRL, temos inteligência de brokerage para garantir o melhor custo de entrada.",
-    whatsapp: "Olá! Sou da JRL Chemicals. Trabalhamos forte com a linha de ácidos e sais para curtumes. Gostaria de saber como está o seu supply de Ácido Fórmico e Sulfato hoje, se existe alguma oportunidade de melhorarmos sua logística.",
-    nextSteps: ['Mapear consumo de Ácido Fórmico', 'Verificar tipo de embalagem (IBC/Granel)', 'Agendar visita técnica'],
-    objections: {
-      'Só compro por preço': 'Entendo perfeitamente. Em commodities para curtume, o preço é chave. Deixe-me apenas validar seu volume para eu brigar por uma condição melhor no meu próximo lote.',
-      'Já compro direto': 'Ótimo. Atendemos muitos clientes que compram direto mas que usam a JRL para complementar volume quando a fábrica corta o pedido.'
-    }
+    products: ['Ácido Fórmico', 'Ácido Acético', 'PAC', 'Sulfato de Sódio', 'Butilglicol'],
+    pitch: "O mercado de couro exige custo agressivo por pele. Temos brokerage forte em Ácido Fórmico e sais.",
+    whatsapp: "Olá! Trabalhamos com a linha completa para curtumes. Gostaria de cotar o Ácido Fórmico e o Sulfato?",
+    nextSteps: ['Explorar custo por pele', 'Regularidade de lote', 'Teste de especificidade'],
+    objections: { 'Manda preço': 'Claro. Qual o volume do seu próximo lote para eu brigar por uma condição melhor?' }
   },
-  'Tintas & Coatings': {
-    products: ['Butilglicol', 'DPG', 'PG', 'MEK', 'MIBK', 'Acetatos', 'Resinas', 'Dispersantes', 'Cargas Minerais', 'DOP/DOTP'],
-    pitch: "O mercado de solventes está muito volátil. Minha intenção é entender seu mix de produção para sugerir trocas de glicóis ou garantir lotes com preço travado.",
-    whatsapp: "Olá, tudo bem? Sou da JRL Chemicals. Temos lotes disponíveis de Butilglicol e MEK com preços competitivos para o setor de tintas esta semana. Gostaria de cotar esses itens com você?",
-    nextSteps: ['Validar consumo de solventes', 'Entender frequência de compra (spot/contrato)', 'Enviar ficha técnica de resinas'],
-    objections: {
-      'Fale com o laboratório': 'Perfeito. Vou encaminhar as especificações. Mas antes, em termos de volume, qual o tamanho da oportunidade que estamos tratando?'
-    }
-  },
-  // Default strategy for others
+  // Add more as needed...
   'default': {
-    products: ['Soda', 'Hipoclorito', 'PAC', 'Ácidos Industriais'],
-    pitch: "A JRL Chemicals atua como seu braço direito em inteligência de supply. Queremos entender onde hoje existe risco na sua operação.",
-    whatsapp: "Olá, somos da JRL Chemicals. Ajudamos empresas a otimizar a compra de matérias-primas químicas. Podemos conversar sobre sua demanda atual?",
-    nextSteps: ['Mapear fornecedor atual', 'Validar volume mensal', 'Entender prazo de pagamento'],
-    objections: {
-      'Já tenho tudo': 'Excelente. Estabilidade é o objetivo. Nosso trabalho é garantir que essa estabilidade continue caso seu parceiro atual tenha problemas.'
-    }
+    products: ['Soda', 'Hipoclorito', 'PAC', 'Insumos Industriais'],
+    pitch: "A JRL Chemicals integra inteligência e logística para otimizar sua compra de químicos.",
+    whatsapp: "Olá! Somos da JRL. Podemos conversar sobre sua demanda de químicos atual?",
+    nextSteps: ['Mapear fornecedor atual', 'Qualificar comprador', 'Validar volume'],
+    objections: { 'Tudo certo por aqui': 'Ótimo! Estabilidade é chave. Ficamos no seu radar para uma cotação de comparação.' }
   }
 };
 
@@ -54,28 +44,31 @@ export function getStrategy(segment: string): Strategy {
   return SEGMENT_STRATEGIES[segment] || SEGMENT_STRATEGIES['default'];
 }
 
-export function calculateCompanyScore(company: Partial<Company>): number {
+export function calculateCompanyScore(company: Partial<Company>): { score: number; reason: string } {
   let score = 0;
-  if (company.segment) score += 15;
-  if (company.temperature === 'Quente') score += 15;
-  if (company.temperature === 'Fogo') score += 30;
-  if (['Diagnóstico completo', 'Proposta enviada'].includes(company.status as string)) score += 20;
-  if (company.nextFollowupAt) score += 10;
+  let reasons: string[] = [];
+
+  // Positivos
+  if (company.segment) { score += 15; reasons.push('Segmento Aderente (+15)'); }
+  if (company.temperature === 'Urgente' || company.temperature === 'Quente') { score += 15; reasons.push('Temperatura Quente (+15)'); }
+  if (company.status === 'Diagnóstico completo') { score += 20; reasons.push('Diagnóstico Completo (+20)'); }
+  if (company.status === 'Proposta enviada') { score += 15; reasons.push('Proposta Enviada (+15)'); }
   
-  // Penalties
-  // (In a real app, this would check dates)
-  return Math.min(100, score);
+  // Negativos (Penalidades)
+  // Nota: Em uma app real, compararíamos datas. Simularemos aqui.
+  
+  return { 
+    score: Math.min(100, Math.max(0, score)), 
+    reason: reasons.join(', ') 
+  };
 }
 
 export function getMission(company: Company): { title: string; action: string } {
   if (company.status === 'Novo cadastro') {
-    return { title: 'Primeiro Contato', action: 'Ligar para a empresa e validar quem é o comprador responsável pelas matérias-primas.' };
-  }
-  if (company.status === 'Pesquisar dados') {
-    return { title: 'Mapeamento de Volume', action: 'Tentar descobrir os volumes mensais dos produtos de entrada sugeridos para este segmento.' };
+    return { title: 'Mapeamento de Comprador', action: 'Ligar para identificar quem decide a compra de químicos industriais.' };
   }
   if (company.status === 'Proposta enviada') {
-    return { title: 'Follow-up de Proposta', action: 'Cobrar retorno da proposta enviada. Validar se o preço ou prazo foram o entrave.' };
+    return { title: 'Fechamento / Negociação', action: 'Realizar follow-up agressivo. Validar preço vs competência técnica.' };
   }
-  return { title: 'Manutenção de Relacionamento', action: 'Enviar mensagem de mercado ou atualização de preços para manter a marca JRL ativa.' };
+  return { title: 'Manutenção Preventiva', action: 'Enviar atualização de mercado e manter a marca JRL no radar.' };
 }

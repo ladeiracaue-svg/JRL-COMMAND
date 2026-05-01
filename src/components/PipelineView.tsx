@@ -117,7 +117,7 @@ export default function PipelineView({ profile, onOpenAccount }: { profile: User
   );
 }
 
-function PipelineCard({ company, onClick }: { company: Company; onClick: () => void }) {
+const PipelineCard: React.FC<{ company: Company; onClick: () => void }> = ({ company, onClick }) => {
   return (
     <motion.div 
       layoutId={company.id}
@@ -152,4 +152,4 @@ function PipelineCard({ company, onClick }: { company: Company; onClick: () => v
       </div>
     </motion.div>
   );
-}
+};
